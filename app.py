@@ -189,7 +189,7 @@ def extract_frames(video_path: str) -> list:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps   = cap.get(cv2.CAP_PROP_FPS) or 30
         dur   = total / fps
-        count = min(24, max(8, int(dur * 6)))
+        count = min(48, max(16, int(dur * 12)))
         indices = [round(i / (count - 1) * (total - 1)) for i in range(count)] if count > 1 else [total // 2]
         MAX_W = 640
         for idx in indices:
