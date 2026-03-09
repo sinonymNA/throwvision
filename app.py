@@ -279,137 +279,104 @@ def call_claude(client, content: list, max_tokens: int = 1000) -> str:
 
 
 def estimate_release_physics(client, frames: list, event_type: str) -> dict:
-    """Pass 0: Multi-frame trajectory + body-proportion physics estimation.
-    
-    Strategy:
-    1. Claude identifies release frame and 2 post-release frames
-    2. Claude estimates implement pixel coordinates across those frames  
-    3. Claude estimates athlete height in pixels using circle diameter as reference
-    4. We compute real angle from pixel displacement vector
-    5. We compute real velocity from pixel displacement + frame interval
-    6. Discus: spin rate estimated for aerodynamic lift correction
+    """Pass 0: Structured visual rubric for release physics.
+
+    Claude reasons through velocity using a performance-level rubric
+    (elite / good / average / developing) and angle from body/implement
+    geometry — no pixel coordinate guessing.
     """
-    tn = {"discus": "discus", "shot_glide": "shot put glide", "shot_spin": "shot put spin"}[event_type]
+    tn        = {"discus":"discus","shot_glide":"shot put glide","shot_spin":"shot put spin"}[event_type]
     is_discus = event_type == "discus"
-    # Known reference dimensions for scale calibration
-    circle_diameter_m = 2.5 if is_discus else 2.135  # metres
+
+    # Reference ranges grounded in real-world performance data
+    if is_discus:
+        vel_table = """
+Velocity reference (discus, 1kg women / 2kg men):
+  Elite college/post-collegiate : 24-28 m/s → 160-200+ ft
+  Good high school varsity       : 19-23 m/s → 120-155 ft
+  Average high school            : 15-18 m/s →  90-120 ft
+  Developing / beginner          : 10-14 m/s →  55-90 ft"""
+        angle_ref = "Optimal discus release angle: 35-40°. Too flat (<30°) loses distance. Too high (>45°) loses range."
+        spin_note = "Estimate discus spin: count visible rotations between release and next frame. Typical HS: 4-8 rps."
+    else:
+        vel_table = """
+Velocity reference (shot put):
+  Elite college/post-collegiate : 13-15 m/s → 55-70+ ft
+  Good high school varsity       : 10-12 m/s → 40-52 ft
+  Average high school            : 8-10 m/s  → 30-42 ft
+  Developing / beginner          : 6-8 m/s   → 20-32 ft"""
+        angle_ref = "Optimal shot release angle: 38-42°. Assess from elbow height and arm trajectory."
+        spin_note = ""
 
     content_msgs = [
-        *[{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": f["b64"]}}
+        *[{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":f["b64"]}}
           for f in frames],
-        {"type": "text", "text": f"""These are {len(frames)} sequential frames (0–{len(frames)-1}) from a {tn} throw in chronological order.
+        {"type":"text","text":f"""These are {len(frames)} sequential frames (0–{len(frames)-1}) from a {tn} throw.
 
-TASK: Extract precise physics data for distance estimation.
+You are estimating release physics for distance prediction. Work through this step by step.
 
-Step 1 — Find release: identify the frame where the {"discus" if is_discus else "shot"} leaves the hand.
+STEP 1 — Find the release frame.
+Identify the frame index where the {"discus" if is_discus else "shot"} leaves the athlete's hand.
 
-Step 2 — Track implement position: For the release frame and the 2 frames immediately AFTER release, estimate the implement's pixel coordinates (x=horizontal, y=vertical, origin top-left).
+STEP 2 — Assess performance level.
+Look at the athlete's body size, muscle development, and the explosiveness visible at release.
+Then look at the overall throw quality. Using this rubric:
+{vel_table}
+Choose the category that best fits this athlete and throw. Be honest — most high school athletes are "average" to "good", not elite.
 
-Step 3 — Athlete scale: Estimate the athlete's height in pixels in the release frame. Also estimate the throwing circle diameter in pixels if visible. This lets us convert pixels to metres.
+STEP 3 — Estimate release angle.
+{angle_ref}
+Look at the release frame: where is the elbow relative to the shoulder? What trajectory does the implement appear to leave on?
 
-Step 4 — Spin (discus only): Estimate how many times the discus visibly rotates between the release frame and 1 frame later. Even a rough estimate (0.5, 1, 1.5 rotations) helps.
+STEP 4 — Assess angle quality.
+Was this a flat release (<32°), low-normal (32-36°), optimal (36-41°), or too high (>42°)?
+{("STEP 5 — Estimate spin rate. " + spin_note) if is_discus else ""}
 
-Step 5 — Velocity confidence: Rate how clearly you can track the implement (0.0=can't see it, 1.0=crystal clear).
+STEP 5 — Confidence.
+How clearly visible is the release moment? (0.0=blurry/hidden, 1.0=crystal clear)
 
 Return ONLY valid JSON:
 {{
   "release_frame_idx": <int>,
-  "post_release_frames": [<int>, <int>],
-  "implement_coords": [
-    {{"frame": <int>, "x": <float px>, "y": <float px>}},
-    {{"frame": <int>, "x": <float px>, "y": <float px>}},
-    {{"frame": <int>, "x": <float px>, "y": <float px>}}
-  ],
-  "athlete_height_px": <float>,
-  "circle_diameter_px": <float or null>,
-  "spin_rotations_per_frame": <float or null>,
-  "tracking_confidence": <float 0-1>,
-  "notes": "<what you observed>"
+  "performance_level": "elite|good|average|developing",
+  "velocity_estimate": <float m/s — pick midpoint of chosen range>,
+  "release_angle": <float degrees>,
+  "angle_quality": "flat|low|optimal|high",
+  "spin_rps": <float or null>,
+  "confidence": <float 0-1>,
+  "reasoning": "<2-3 sentences explaining your velocity and angle choices>",
+  "notes": "<brief observation about release>"
 }}"""}
     ]
 
-    raw = call_claude(client, content_msgs, max_tokens=500)
+    raw = call_claude(client, content_msgs, max_tokens=600)
     try:
-        raw_data = json.loads(raw.strip().replace("```json","").replace("```","").strip())
+        result = json.loads(raw.strip().replace("```json","").replace("```","").strip())
     except Exception:
-        raw_data = {}
+        result = {}
 
-    # ── Physics computation from tracked coordinates ──
-    coords  = raw_data.get("implement_coords", [])
-    frames_list = frames  # alias
-    fps     = 1.0 / max(0.01, (frames_list[1]["time"] - frames_list[0]["time"])) if len(frames_list) > 1 else 30.0
+    # Sanity clamps — wide enough to not strangle real estimates
+    angle = float(result.get("release_angle", 37 if is_discus else 39))
+    vel   = float(result.get("velocity_estimate", 18 if is_discus else 10.5))
+    angle = max(20.0, min(55.0, angle))
+    vel   = max(9.0,  min(30.0, vel))
 
-    # Scale: metres per pixel
-    # Priority: circle diameter → athlete height → fallback
-    m_per_px = None
-    circle_px = raw_data.get("circle_diameter_px")
-    height_px = raw_data.get("athlete_height_px")
-    ATHLETE_HEIGHT_M = 1.83  # assumed average thrower height
-
-    if circle_px and circle_px > 20:
-        m_per_px = circle_diameter_m / circle_px
-    elif height_px and height_px > 50:
-        m_per_px = ATHLETE_HEIGHT_M / height_px
-
-    # Compute angle and velocity from pixel trajectory
-    angle_deg    = None
-    velocity_mps = None
-    angle_uncertainty = 5.0  # degrees, default
-
-    if len(coords) >= 2 and m_per_px:
-        # Use first two tracked points
-        p0, p1 = coords[0], coords[1]
-        # Frame time delta
-        fi0 = p0.get("frame", raw_data.get("release_frame_idx", 0))
-        fi1 = p1.get("frame", fi0 + 1)
-        dt  = max(0.001, (fi1 - fi0) / fps)
-
-        dx_px = p1["x"] - p0["x"]
-        dy_px = p0["y"] - p1["y"]  # invert Y (screen coords)
-
-        dx_m  = dx_px * m_per_px
-        dy_m  = dy_px * m_per_px
-
-        speed_mps = math.sqrt(dx_m**2 + dy_m**2) / dt
-        angle_rad = math.atan2(dy_m, abs(dx_m))
-        angle_deg = math.degrees(angle_rad)
-
-        # Confidence-weighted uncertainty
-        conf = raw_data.get("tracking_confidence", 0.5)
-        angle_uncertainty = max(2.0, 8.0 * (1.0 - conf))
-        velocity_mps = speed_mps
-
-    # Fallback: ask Claude for a direct visual estimate if tracking failed
-    if angle_deg is None or velocity_mps is None or velocity_mps < 3 or velocity_mps > 35:
-        # Use Claude's visual estimate as fallback with lower confidence
-        defaults = {"discus": (37.0, 18.0), "shot_spin": (39.0, 10.5), "shot_glide": (39.0, 10.5)}
-        def_angle, def_vel = defaults[event_type]
-        angle_deg    = def_angle
-        velocity_mps = def_vel
-        angle_uncertainty = 8.0
-        raw_data["_used_fallback"] = True
-
-    # Sanity clamps
-    angle_deg    = max(15.0, min(60.0, angle_deg))
-    velocity_mps = max(8.0,  min(32.0, velocity_mps))
-
-    # Spin rate for discus aerodynamic lift
-    spin_rps = None
-    if is_discus:
-        spf = raw_data.get("spin_rotations_per_frame")
-        if spf is not None:
-            spin_rps = float(spf) * fps
+    # Angle uncertainty based on confidence + angle quality
+    conf      = float(result.get("confidence", 0.5))
+    aq        = result.get("angle_quality", "optimal")
+    base_unc  = {"flat": 6.0, "low": 4.0, "optimal": 3.0, "high": 5.0}.get(aq, 4.0)
+    angle_unc = base_unc + (1.0 - conf) * 4.0  # lower confidence → wider interval
 
     return {
-        "release_angle":      round(angle_deg, 1),
-        "angle_uncertainty":  round(angle_uncertainty, 1),
-        "velocity_estimate":  round(velocity_mps, 1),
-        "confidence":         raw_data.get("tracking_confidence", 0.4),
-        "m_per_px":           round(m_per_px, 5) if m_per_px else None,
-        "spin_rps":           round(spin_rps, 1) if spin_rps else None,
-        "used_fallback":      raw_data.get("_used_fallback", False),
-        "notes":              raw_data.get("notes", ""),
-        "release_frame_idx":  raw_data.get("release_frame_idx", len(frames)//2),
+        "release_angle":     round(angle, 1),
+        "angle_uncertainty": round(angle_unc, 1),
+        "velocity_estimate": round(vel, 1),
+        "confidence":        conf,
+        "spin_rps":          result.get("spin_rps"),
+        "used_fallback":     False,
+        "notes":             result.get("reasoning") or result.get("notes", ""),
+        "release_frame_idx": result.get("release_frame_idx", len(frames)//2),
+        "performance_level": result.get("performance_level", "average"),
     }
 
 
