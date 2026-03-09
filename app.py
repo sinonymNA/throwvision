@@ -108,7 +108,7 @@ def extract_frames(video_path: str) -> list:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps   = cap.get(cv2.CAP_PROP_FPS) or 30
         dur   = total / fps
-        count = min(12, max(6, int(dur * 4)))
+        count = min(24, max(8, int(dur * 6)))
         indices = [round(i / (count - 1) * (total - 1)) for i in range(count)] if count > 1 else [total // 2]
         MAX_W = 640
         for idx in indices:
@@ -161,7 +161,7 @@ Return ONLY a JSON array of exactly {len(positions)} integers or nulls. Example:
 No explanation, no markdown."""}
     ]
 
-    raw = call_claude(client, content, max_tokens=150)
+    raw = call_claude(client, content, max_tokens=200)
     txt = raw.strip().replace("```json", "").replace("```", "").strip()
     try:
         indices = json.loads(txt)
