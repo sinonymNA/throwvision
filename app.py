@@ -9,7 +9,6 @@ import re
 from PIL import Image
 import io
 
-# ── PAGE CONFIG ──
 st.set_page_config(
     page_title="ThrowsLab — Position Breakdown",
     page_icon="🥏",
@@ -17,18 +16,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── POSITIONS ──
+# ── POSITIONS (7 positions, event-specific criteria) ──
 POSITIONS = [
     {
         "id": "prep",
         "name": "Preparation / Wind-up",
         "icon": "①",
         "short": "PREP",
-        "desc": "Setting up balance and loading",
+        "desc": "Setting up balance before rotation begins",
         "criteria": {
-            "shot_spin":  ["Feet shoulder-width, back to sector", "Shot tucked at neck/jaw", "Throwing arm elbow up", "Weight centered and balanced", "Mental focus — eyes down-sector"],
-            "shot_glide": ["Back to sector, feet hip-width", "Shot at neck/jaw, elbow up", "Weight on right foot", "Knees slightly bent and loaded", "Body relaxed but coiled"],
-            "discus":     ["Feet shoulder-width, back to sector", "Discus rests on finger pads — not palm", "Arms relaxed, preliminary swing building", "Weight balanced and centered", "Eyes focused down-sector"],
+            "shot_spin":  ["Feet shoulder-width, back to sector", "Shot tucked at neck/jaw, elbow up", "Weight centered and balanced", "Eyes focused, body relaxed and coiled", "Mental preparation complete"],
+            "shot_glide": ["Back to sector, feet hip-width", "Shot at neck/jaw, elbow up", "Weight on right foot, knees slightly bent", "Body relaxed and loaded", "Ready to drive backward"],
+            "discus":     ["Feet shoulder-width, back to sector", "Discus on finger pads — not palm", "Arms relaxed, preliminary swing beginning", "Weight balanced and centered", "Eyes focused down-sector"],
         },
     },
     {
@@ -36,11 +35,11 @@ POSITIONS = [
         "name": "Entry",
         "icon": "②",
         "short": "ENTRY",
-        "desc": "Beginning rotation from the back",
+        "desc": "Beginning rotation from the back of the circle",
         "criteria": {
-            "shot_spin":  ["Deep knee bend on pivot foot", "Free leg sweeps low and wide", "Hips low — jackknife position achieved", "Back still facing sector", "Shot stays at neck throughout"],
-            "shot_glide": ["Right foot drives powerfully back", "Low glide — not a hop", "Left leg extends long toward board", "Hips stay low throughout", "Shot stays loaded at neck"],
-            "discus":     ["Preliminary swing builds angular momentum", "Discus tracks back and high on backswing", "Weight shifts decisively to right foot", "Pivot foot heel begins to rise", "Body coiling — shoulders lag hips"],
+            "shot_spin":  ["Deep knee bend on pivot foot", "Free leg sweeps low and wide", "Hips low — jackknife position", "Back still facing sector", "Shot stays loaded at neck"],
+            "shot_glide": ["Right foot drives powerfully backward", "Low glide — not a hop", "Left leg extends long toward board", "Hips stay low throughout", "Shot stays loaded at neck"],
+            "discus":     ["Preliminary swing builds angular momentum", "Discus tracks back and high", "Weight shifts decisively to right foot", "Pivot foot heel begins to rise", "Body coiling — shoulders lag hips"],
         },
     },
     {
@@ -48,9 +47,9 @@ POSITIONS = [
         "name": "Airborne / Flight",
         "icon": "③",
         "short": "FLIGHT",
-        "desc": "Moving across the circle",
+        "desc": "Moving across the circle with both feet briefly off the ground",
         "criteria": {
-            "shot_spin":  ["Back fully facing sector at mid-rotation", "Left leg driving through aggressively", "Hips ahead of shoulders — separation maintained", "Low center of gravity throughout", "Not opening shoulders too early"],
+            "shot_spin":  ["Back fully facing sector mid-rotation", "Left leg driving through aggressively", "Hips ahead of shoulders — separation visible", "Low center of gravity", "Not opening too early"],
             "shot_glide": ["Body near parallel to ground", "Both feet briefly off surface", "Low flat trajectory across circle", "Left foot tracking toward toe board", "Shot still loaded at neck"],
             "discus":     ["Back fully facing sector mid-rotation", "Left leg driving wide and low", "Discus trails well behind throwing shoulder", "Hips clearly ahead of shoulders", "Low and wide — not upright"],
         },
@@ -60,11 +59,11 @@ POSITIONS = [
         "name": "Transition / Landing",
         "icon": "④",
         "short": "LAND",
-        "desc": "Grounding the right foot",
+        "desc": "Grounding the right foot at center of circle",
         "criteria": {
             "shot_spin":  ["Right foot lands near circle center", "Left foot beginning to reach for plant", "Hips still ahead of shoulders", "Weight loaded on right side", "Shot still at neck — not drifting"],
-            "shot_glide": ["Right foot lands under hips at center", "Left foot contacts toe board simultaneously", "Hip-shoulder separation maintained at landing", "Knees bent and loaded on contact", "Shot still at neck"],
-            "discus":     ["Right foot plants firmly near circle center", "Left foot sweeping toward front", "Hip-shoulder separation preserved on landing", "Knees bent — body stays low", "Discus still trailing behind shoulder"],
+            "shot_glide": ["Right foot lands under hips at center", "Left foot contacts toe board simultaneously", "Hip-shoulder separation maintained", "Knees bent and loaded on contact", "Shot still at neck"],
+            "discus":     ["Right foot plants firmly near circle center", "Left foot beginning sweep toward front", "Hip-shoulder separation preserved", "Knees bent — body stays low", "Discus still trailing behind shoulder"],
         },
     },
     {
@@ -72,11 +71,11 @@ POSITIONS = [
         "name": "Power Position",
         "icon": "⑤",
         "short": "POWER",
-        "desc": "Setting up the final throw",
+        "desc": "Setting up the final explosive throw",
         "criteria": {
-            "shot_spin":  ["Left foot plants near toe board", "Right foot behind center — wide base", "Hip-shoulder separation 45°+ at set", "Shot still at neck — no early release", "Knees loaded — ready to drive"],
-            "shot_glide": ["Left foot firm at toe board", "Right foot behind center, wide stance", "Hip-shoulder separation clearly visible", "Knees bent and coiled", "Shot at neck, elbow up"],
-            "discus":     ["Left foot plants firmly near front of circle", "Discus at or above shoulder height", "Hip-shoulder separation 45°+ clearly visible", "Throwing arm fully extended behind body", "Weight loaded on right — ready to fire"],
+            "shot_spin":  ["Left foot plants near toe board", "Right foot behind center — wide base", "Hip-shoulder separation 45°+ at set", "Shot still at neck, not early-releasing", "Knees loaded — ready to drive"],
+            "shot_glide": ["Left foot firm at toe board", "Right foot behind center, wide stance", "Hip-shoulder separation clearly visible", "Knees bent and coiled, elbow up", "Shot at neck — fully loaded"],
+            "discus":     ["Left foot plants firmly near front of circle", "Discus at or above shoulder height", "Hip-shoulder separation 45°+ visible", "Throwing arm fully extended behind body", "Weight loaded right — ready to fire"],
         },
     },
     {
@@ -86,9 +85,21 @@ POSITIONS = [
         "short": "RELEASE",
         "desc": "Explosive final throwing action",
         "criteria": {
-            "shot_spin":  ["Elbow at or above shoulder at release", "Release angle 38-42°", "Full leg and hip extension through release", "Left arm blocks hard and short", "Chin-wrist-elbow aligned at release point"],
-            "shot_glide": ["Elbow at or above shoulder", "Release angle 38-42°", "Full leg extension through throw", "Left arm blocks firmly", "Complete follow-through after release"],
-            "discus":     ["Discus leaves from index finger last", "Release angle 35-40°", "Throwing arm sweeps up — not flat", "Left arm blocks hard at the hip", "Disc attitude flat — good gyroscopic spin"],
+            "shot_spin":  ["Elbow at or above shoulder at release", "Release angle 38-42°", "Full leg and hip extension through release", "Left arm blocks hard and short", "Chin-wrist-elbow aligned at release"],
+            "shot_glide": ["Elbow at or above shoulder at release", "Release angle 38-42°", "Full leg extension through throw", "Left arm blocks firmly", "Complete follow-through after release"],
+            "discus":     ["Discus leaves from index finger last", "Release angle 35-40°", "Throwing arm sweeps up — not flat", "Left arm blocks hard at hip", "Disc attitude flat — good gyroscopic spin"],
+        },
+    },
+    {
+        "id": "finish",
+        "name": "Finish / Reverse",
+        "icon": "⑦",
+        "short": "FINISH",
+        "desc": "Balance recovery and circle control after release",
+        "criteria": {
+            "shot_spin":  ["Reverse completes — right foot replaces left", "Athlete stays within the circle", "Weight forward over toe board — not falling back", "Threw through the implement — no early quit", "Balance maintained — controlled finish"],
+            "shot_glide": ["Reverse completes cleanly", "Left foot lifts off toe board", "No foul — stays in circle", "Threw through — no deceleration before release", "Controlled balance recovery"],
+            "discus":     ["Reverse or pivot — right foot replaces left at front", "Athlete stays in circle — no foul", "Threw through the disc — no early shutdown", "Shoulders finish rotating — no quit", "Controlled balance — not stumbling out"],
         },
     },
 ]
@@ -99,74 +110,120 @@ EVENT_LABELS = {
     "discus":     "DISCUS",
 }
 
+VERDICT_COLORS = {
+    "good": ("#1a5c3a", "#e8f5ee", "EXCELLENT"),
+    "ok":   ("#0f3460", "#e8eef5", "SOLID"),
+    "warn": ("#c41e2a", "#fdf0f0", "NEEDS WORK"),
+}
+
 # ── CSS ──
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;600;700;900&family=Courier+Prime:wght@400;700&display=swap');
-html, body, [class*="css"] { font-family: 'Courier Prime', monospace; }
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;600;700;900&family=Inter:wght@400;500;600&display=swap');
 
-.tl-header { background:#0f0d0b; padding:14px 28px; border-bottom:3px solid #c41e2a;
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+.tl-header { background:#0f0d0b; padding:16px 32px; border-bottom:3px solid #c41e2a;
              display:flex; align-items:center; gap:16px; margin:-1rem -1rem 1.5rem -1rem; }
-.tl-logo { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.6rem;
+.tl-logo { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.8rem;
            letter-spacing:8px; color:#fff; text-transform:uppercase; }
 .tl-logo em { color:#c41e2a; font-style:normal; }
-.tl-logo-sub { font-family:'Barlow Condensed',sans-serif; font-size:0.5rem; letter-spacing:4px; color:#444; }
+.tl-logo-sub { font-family:'Barlow Condensed',sans-serif; font-size:0.55rem; letter-spacing:4px; color:#555; }
 
-.section-title { font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:0.6rem;
+.section-title { font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:0.65rem;
                  letter-spacing:5px; text-transform:uppercase; color:#8a7d6e;
                  border-bottom:1px solid #d4cabf; padding-bottom:5px;
-                 margin-bottom:14px; margin-top:20px; }
+                 margin-bottom:18px; margin-top:24px; }
 
-/* Carousel / assignment */
-.carousel-frame-label {
-    font-family:'Barlow Condensed',sans-serif; font-weight:700;
-    font-size:0.55rem; letter-spacing:2px; text-align:center;
-    margin-top:3px; color:#8a7d6e;
-}
-.pos-slot {
-    border:1px solid #d4cabf; border-top:3px solid #d4cabf;
-    padding:8px 10px; margin-bottom:6px; background:#fff;
-}
-.pos-slot.filled { border-top-color:#1a5c3a; }
-.pos-slot.active  { border-top-color:#c41e2a; background:#fffaf8; }
-.pos-slot-name { font-family:'Barlow Condensed',sans-serif; font-weight:900;
-                 font-size:0.8rem; letter-spacing:2px; text-transform:uppercase; }
-.pos-slot-desc { font-size:0.5rem; color:#8a7d6e; margin-top:1px; }
-.pos-slot-status { font-size:0.48rem; margin-top:4px; }
-.pos-slot-status.ok   { color:#1a5c3a; font-weight:700; }
-.pos-slot-status.miss { color:#c41e2a; }
+/* Status strip */
+.assign-card { background:#fff; border:1px solid #d4cabf; border-top:3px solid #e0d9d0;
+               padding:8px 10px; text-align:center; border-radius:2px; }
+.assign-card.assigned   { border-top-color:#1a5c3a; }
+.assign-card.unassigned { border-top-color:#c41e2a; }
+.assign-pos-name { font-family:'Barlow Condensed',sans-serif; font-weight:900;
+                   font-size:0.8rem; letter-spacing:2px; text-transform:uppercase; }
+.assign-status { font-size:0.5rem; letter-spacing:1px; margin-top:3px; }
+.assign-status.ok      { color:#1a5c3a; font-weight:600; }
+.assign-status.missing { color:#c41e2a; }
 
-/* Result cards */
-.pos-card-name { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:0.85rem;
-                 letter-spacing:2px; text-transform:uppercase; color:#0f0d0b; }
-.pos-card-verdict { font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:0.5rem;
-                    letter-spacing:2px; padding:2px 7px; display:inline-block; margin-top:3px; }
-.verdict-good    { background:rgba(26,92,58,.12);  color:#1a5c3a; border:1px solid rgba(26,92,58,.25); }
-.verdict-warn    { background:rgba(196,30,42,.1);  color:#c41e2a; border:1px solid rgba(196,30,42,.2); }
-.verdict-ok      { background:rgba(15,52,96,.08);  color:#0f3460; border:1px solid rgba(15,52,96,.15); }
-.verdict-pending { background:#f0ece6; color:#8a7d6e; border:1px solid #d4cabf; }
-.pos-card-note { font-size:0.55rem; color:#555; line-height:1.6; margin-top:5px; }
-.pos-card-time { font-size:0.45rem; color:#aaa; letter-spacing:1px; margin-top:2px; }
+/* Result card */
+.result-card { background:#fff; border:1px solid #e0d9d0; border-radius:4px;
+               overflow:hidden; margin-bottom:4px; }
+.result-card-body { padding:14px 16px; }
+.result-pos-num { font-family:'Barlow Condensed',sans-serif; font-weight:700;
+                  font-size:0.55rem; letter-spacing:3px; text-transform:uppercase;
+                  color:#aaa; margin-bottom:2px; }
+.result-pos-name { font-family:'Barlow Condensed',sans-serif; font-weight:900;
+                   font-size:1.1rem; letter-spacing:2px; text-transform:uppercase;
+                   color:#0f0d0b; line-height:1.1; }
+.result-verdict { display:inline-block; font-family:'Barlow Condensed',sans-serif;
+                  font-weight:700; font-size:0.6rem; letter-spacing:3px;
+                  padding:3px 10px; margin:6px 0; border-radius:2px; }
+.result-oneline { font-size:0.8rem; color:#333; line-height:1.5; margin-top:6px; font-weight:500; }
+.result-time { font-size:0.5rem; color:#bbb; letter-spacing:1px; margin-top:4px; }
 
-.check-row { display:flex; gap:8px; align-items:flex-start; font-size:0.6rem;
-             line-height:1.6; padding:3px 0; border-bottom:1px solid #f0ece6; }
-.check-icon { font-size:0.75rem; flex-shrink:0; width:16px; }
+/* Cue box */
+.cue-box { background:#0f0d0b; color:#fff; padding:10px 14px; margin-top:10px;
+           border-radius:2px; font-size:0.75rem; font-weight:600; letter-spacing:0.5px;
+           line-height:1.4; }
+.cue-box::before { content:"CUE  "; font-family:'Barlow Condensed',sans-serif;
+                   font-size:0.5rem; letter-spacing:4px; color:#c41e2a;
+                   display:block; margin-bottom:3px; }
+
+/* Checklist */
+.check-row { display:flex; gap:10px; align-items:flex-start; font-size:0.72rem;
+             line-height:1.6; padding:5px 0; border-bottom:1px solid #f5f0eb; }
+.check-icon { font-size:0.85rem; flex-shrink:0; width:18px; font-weight:700; }
 .check-pass { color:#1a5c3a; }
 .check-warn { color:#c8920a; }
 .check-fail { color:#c41e2a; }
+.check-note { color:#888; font-size:0.65rem; margin-top:1px; font-style:italic; }
 
+/* Coaching report */
+.report-card { background:#fff; border:1px solid #e0d9d0; border-radius:4px;
+               overflow:hidden; margin-top:8px; }
+.report-section { padding:16px 20px; border-bottom:1px solid #f0ebe4; }
+.report-section:last-child { border-bottom:none; }
+.report-section-label { font-family:'Barlow Condensed',sans-serif; font-weight:900;
+                        font-size:0.6rem; letter-spacing:4px; text-transform:uppercase;
+                        margin-bottom:8px; }
+.report-section-label.strengths  { color:#1a5c3a; }
+.report-section-label.faults     { color:#c41e2a; }
+.report-section-label.cues       { color:#0f3460; }
+.report-section-label.next       { color:#c8920a; }
+.report-section-label.projection { color:#555; }
+.report-summary { font-size:0.85rem; font-weight:600; color:#0f0d0b;
+                  margin-bottom:10px; line-height:1.5; }
+.report-bullets { list-style:none; padding:0; margin:0; }
+.report-bullets li { font-size:0.78rem; color:#444; line-height:1.6;
+                     padding:3px 0 3px 18px; position:relative; }
+.report-bullets li::before { content:"→"; position:absolute; left:0;
+                              color:#c41e2a; font-weight:700; }
+
+/* Physics strip */
+.phys-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+.phys-card { background:#fff; border:1px solid #e0d9d0; border-top:3px solid #e0d9d0;
+             padding:14px 16px; border-radius:2px; }
+.phys-card.vel { border-top-color:#0f3460; }
+.phys-card.ang { border-top-color:#c8920a; }
+.phys-card.dst { border-top-color:#1a5c3a; }
+.phys-card.grd { border-top-color:#c41e2a; }
+.phys-label { font-size:0.5rem; letter-spacing:2px; color:#aaa; text-transform:uppercase; margin-bottom:4px; }
+.phys-val { font-family:'Barlow Condensed',sans-serif; font-weight:900;
+            font-size:2.2rem; line-height:1; color:#0f0d0b; }
+.phys-unit { font-size:0.45rem; color:#aaa; margin-top:2px; letter-spacing:1px; }
+
+/* Sidebar metrics */
 .metric-card { background:#fff; border:1px solid #d4cabf; padding:12px 14px;
-               border-left:3px solid #d4cabf; margin-bottom:8px; }
+               border-left:3px solid #d4cabf; margin-bottom:8px; border-radius:2px; }
 .metric-card.vel { border-left-color:#0f3460; }
 .metric-card.ang { border-left-color:#c8920a; }
 .metric-card.dst { border-left-color:#1a5c3a; }
 .metric-card.grd { border-left-color:#c41e2a; }
 .metric-label { font-size:0.45rem; letter-spacing:2px; color:#8a7d6e; text-transform:uppercase; }
-.metric-val { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.8rem; line-height:1.1; color:#0f0d0b; }
+.metric-val { font-family:'Barlow Condensed',sans-serif; font-weight:900;
+              font-size:1.8rem; line-height:1.1; color:#0f0d0b; }
 .metric-unit { font-size:0.4rem; color:#8a7d6e; letter-spacing:1px; }
-
-.coaching-box { background:#f7f3ee; border-left:4px solid #0f3460; padding:16px 18px;
-                font-size:0.65rem; line-height:2; white-space:pre-wrap; color:#0f0d0b; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -180,7 +237,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── FRAME EXTRACTION ──
+# ── HELPERS ──
+
 def extract_frames(video_path: str) -> list:
     frames = []
     try:
@@ -207,11 +265,10 @@ def extract_frames(video_path: str) -> list:
             frames.append({"time": round(idx / fps, 2), "b64": b64, "img": img})
         cap.release()
     except ImportError:
-        st.error("opencv-python-headless is required — add it to requirements.txt.")
+        st.error("opencv-python-headless is required.")
     return frames
 
 
-# ── CLAUDE CALLS ──
 def call_claude(client, content: list, max_tokens: int = 1000) -> str:
     response = client.messages.create(
         model="claude-opus-4-5",
@@ -221,93 +278,198 @@ def call_claude(client, content: list, max_tokens: int = 1000) -> str:
     return response.content[0].text
 
 
+def estimate_release_physics(client, frames: list, event_type: str) -> dict:
+    """Pass 0: send ALL frames, ask Claude to find the release moment and estimate
+    angle from disc/implement attitude and arm trajectory. More accurate than
+    relying on a single user-selected frame."""
+    tn = {"discus": "discus", "shot_glide": "shot put glide", "shot_spin": "shot put spin"}[event_type]
+    is_discus = event_type == "discus"
+
+    content = [
+        *[{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": f["b64"]}}
+          for f in frames],
+        {"type": "text", "text": f"""These are {len(frames)} sequential frames from a {tn} throw, in chronological order (frame 0 to {len(frames)-1}).
+
+Your task is to estimate release physics as accurately as possible.
+
+Step 1: Identify the frame index where the implement ({"discus" if is_discus else "shot"}) leaves the athlete's hand. Look for the last frame where the implement is still in contact, or the first frame where it is clearly airborne.
+
+Step 2: From that release frame, estimate:
+{"- release_angle: the angle of the discus's flight path relative to horizontal. Look at the disc's orientation/attitude AND the arm's trajectory at the moment of release. Typical range 30-45°." if is_discus else "- release_angle: the angle of the shot's trajectory off the hand. Look at arm angle and body extension. Typical range 35-44°."}
+- velocity_estimate: estimated release velocity in m/s. Base this on body size/proportions and the explosive force visible. {"Elite discus: 24-28 m/s, good high school: 17-22 m/s." if is_discus else "Elite shot: 13-15 m/s, good high school: 9-12 m/s."}
+- confidence: your confidence in the angle estimate (0.0-1.0)
+- notes: brief explanation of what you observed to make this estimate
+
+Return ONLY valid JSON:
+{{
+  "release_frame_idx": <integer>,
+  "release_angle": <float, degrees>,
+  "velocity_estimate": <float, m/s>,
+  "confidence": <float 0-1>,
+  "notes": "<brief observation>"
+}}"""}
+    ]
+
+    raw = call_claude(client, content, max_tokens=300)
+    try:
+        result = json.loads(raw.strip().replace("```json", "").replace("```", "").strip())
+        # Sanity clamp
+        result["release_angle"]     = max(20.0, min(55.0, float(result.get("release_angle", 37))))
+        result["velocity_estimate"] = max(8.0,  min(30.0, float(result.get("velocity_estimate", 17 if event_type == "discus" else 10))))
+        return result
+    except Exception:
+        defaults = {"discus": (37.0, 17.0), "shot_spin": (39.0, 10.0), "shot_glide": (39.0, 10.0)}
+        a, v = defaults[event_type]
+        return {"release_frame_idx": len(frames) // 2, "release_angle": a,
+                "velocity_estimate": v, "confidence": 0.3, "notes": "Fallback defaults used."}
+
+
 def analyze_position(client, frame: dict, pos: dict, event_type: str) -> dict:
     tn = {"discus": "discus", "shot_glide": "shot put glide", "shot_spin": "shot put rotational spin"}[event_type]
-    criteria_list = "\n".join(f"{i+1}. {c}" for i, c in enumerate(pos["criteria"][event_type]))
+    criteria = pos["criteria"][event_type]
+    criteria_list = "\n".join(f"{i+1}. {c}" for i, c in enumerate(criteria))
+
     prompt = f"""You are an elite throws coach analyzing a {tn} athlete.
 This frame shows the "{pos['name']}" position ({pos['desc']}).
 
-Evaluate:
+Evaluate these criteria honestly — don't give unwarranted passes:
 {criteria_list}
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown):
 {{
   "verdict": "good|ok|warn",
   "verdict_label": "EXCELLENT|SOLID|NEEDS WORK|FAULT DETECTED",
-  "checks": [{{"criterion":"...","status":"pass|warn|fail","note":"brief specific observation"}}],
-  "one_line": "most important observation, max 15 words",
-  "cue": "one field coaching cue, max 12 words",
-  "release_angle": null,
-  "velocity_estimate": null
-}}
-For the Delivery/Release position only, estimate release_angle (degrees) and velocity_estimate (m/s, conservative)."""
+  "checks": [{{"criterion":"...","status":"pass|warn|fail","note":"specific, honest observation in 8-12 words"}}],
+  "one_line": "most impactful observation about this position, max 12 words, direct coach voice",
+  "cue": "one short field coaching cue, max 10 words, the kind you shout from the infield"
+}}"""
 
     raw = call_claude(client, [
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": frame["b64"]}},
         {"type": "text", "text": prompt},
     ], max_tokens=700)
+
     try:
-        return json.loads(raw.strip().replace("```json","").replace("```","").strip())
+        return json.loads(raw.strip().replace("```json", "").replace("```", "").strip())
     except Exception:
-        return {"verdict":"ok","verdict_label":"ANALYZED","checks":[],"one_line":"Analysis complete.",
-                "cue":"Keep working on fundamentals.","release_angle":None,"velocity_estimate":None}
+        return {"verdict": "ok", "verdict_label": "ANALYZED", "checks": [],
+                "one_line": "Analysis complete.", "cue": "Keep working."}
 
 
-def get_coaching(client, analysis_data: list, physics: dict, event_type: str, athlete: str, pr: str) -> str:
-    tn = {"discus":"discus","shot_glide":"shot put (glide)","shot_spin":"shot put (spin)"}[event_type]
-    summary = "\n".join(f"{d['posName']}: {d.get('verdict_label','—')} — {d.get('one_line','')}" for d in analysis_data if d)
-    faults  = "\n".join(
+def get_coaching(client, analysis_data: list, physics: dict, event_type: str,
+                 athlete: str, pr: str, release_notes: str) -> dict:
+    """Returns structured dict with sections instead of a blob of text."""
+    tn = {"discus": "discus", "shot_glide": "shot put (glide)", "shot_spin": "shot put (spin)"}[event_type]
+
+    summary = "\n".join(
+        f"{d['posName']}: {d.get('verdict_label','—')} — {d.get('one_line','')}"
+        for d in analysis_data if d
+    )
+    faults = "\n".join(
         f"[{d['posName']}] {c['criterion']}: {c.get('note','')}"
         for d in analysis_data if d
-        for c in d.get("checks",[]) if c.get("status") in ("fail","warn")
+        for c in d.get("checks", []) if c.get("status") in ("fail", "warn")
     ) or "None detected"
+
     prompt = f"""Elite throws coach writing a session report for {athlete}, {tn}.{f' Current PR: {pr}.' if pr else ''}
 
-Position analysis:
+Position analysis summary:
 {summary}
 
-Faults identified:
+Technical faults identified:
 {faults}
 
-Physics: velocity {physics['velocity']} m/s, angle {physics['angle']}°, predicted {physics['dist_ft']} ft.
+Physics analysis: velocity {physics['velocity']} m/s, release angle {physics['angle']}°, predicted distance {physics['dist_ft']} ft.
+Physics confidence: {physics.get('confidence_pct', '—')}%. Notes from release frame analysis: {release_notes}
 
-Write a report with these exact sections:
-STRENGTHS:
-FAULTS TO FIX:
-SESSION CUES:
-NEXT SESSION FOCUS:
-PROJECTION:
+Write an encouraging but honest coaching report. Return ONLY valid JSON:
+{{
+  "opening": "one encouraging sentence acknowledging what's working overall, max 20 words",
+  "strengths": {{
+    "summary": "one sentence on biggest strength, max 15 words",
+    "bullets": ["specific strength 1", "specific strength 2", "specific strength 3"]
+  }},
+  "faults": {{
+    "summary": "one sentence on highest-priority fault to fix, max 15 words",
+    "bullets": ["Priority 1: fault + why it matters", "Priority 2: fault + why it matters", "Priority 3: fault + why it matters"]
+  }},
+  "cues": {{
+    "summary": "one sentence framing the session cues",
+    "bullets": ["short cue 1 — context", "short cue 2 — context", "short cue 3 — context", "short cue 4 — context"]
+  }},
+  "next": {{
+    "summary": "one sentence on next session priority",
+    "bullets": ["drill or focus 1", "drill or focus 2"]
+  }},
+  "projection": {{
+    "summary": "one encouraging sentence on realistic improvement potential",
+    "bullets": ["specific distance gain if top fault fixed", "timeline estimate"]
+  }}
+}}
 
-Direct coach voice. Reference positions by name."""
-    raw = call_claude(client, [{"type":"text","text":prompt}], max_tokens=900)
-    return re.sub(r'\*{1,2}(.*?)\*{1,2}', r'\1', raw)
+Be specific, reference positions by name. Encouraging but direct — no generic filler."""
+
+    raw = call_claude(client, [{"type": "text", "text": prompt}], max_tokens=1200)
+    try:
+        return json.loads(raw.strip().replace("```json", "").replace("```", "").strip())
+    except Exception:
+        # Fallback plain structure
+        clean = re.sub(r'\*{1,2}(.*?)\*{1,2}', r'\1', raw)
+        return {"_raw": clean}
 
 
-def compute_physics(analysis_data: list, event_type: str) -> dict:
-    rel = next((d for d in analysis_data if d and d.get("posId") == "release"), None)
-    defaults = {"discus":(37,17),"shot_spin":(39,10),"shot_glide":(39,10)}
-    def_angle, def_vel = defaults[event_type]
-    try:    angle    = float(rel["release_angle"])    if rel and rel.get("release_angle")    is not None else def_angle
-    except: angle    = def_angle
-    try:    velocity = float(rel["velocity_estimate"]) if rel and rel.get("velocity_estimate") is not None else def_vel
-    except: velocity = def_vel
+def compute_physics(release_data: dict, event_type: str) -> dict:
+    angle    = release_data.get("release_angle", 37 if event_type == "discus" else 39)
+    velocity = release_data.get("velocity_estimate", 17 if event_type == "discus" else 10)
+    confidence = release_data.get("confidence", 0.5)
+
     h0 = 1.8 if event_type == "discus" else 2.1
-    g  = 9.81; ar = math.radians(angle)
-    dist_m  = (velocity*math.cos(ar)/g)*(velocity*math.sin(ar)+math.sqrt((velocity*math.sin(ar))**2+2*g*h0))
-    dist_ft = round(dist_m*3.28084,1)
+    g  = 9.81
+    ar = math.radians(angle)
+    dist_m  = (velocity * math.cos(ar) / g) * (
+        velocity * math.sin(ar) + math.sqrt((velocity * math.sin(ar))**2 + 2 * g * h0)
+    )
+    dist_ft = round(dist_m * 3.28084, 1)
+    return {
+        "velocity": round(velocity, 1),
+        "angle":    round(angle, 1),
+        "dist_m":   round(dist_m, 2),
+        "dist_ft":  dist_ft,
+        "confidence_pct": round(confidence * 100),
+    }
+
+
+def grade_from_analysis(analysis_data: list) -> str:
     verdicts = [d.get("verdict") for d in analysis_data if d]
-    score    = round((verdicts.count("good")/max(1,len(verdicts)))*10 - verdicts.count("warn")*0.5)
-    grade    = "A" if score>=8 else "B" if score>=6 else "C" if score>=4 else "D"
-    return {"velocity":round(velocity,1),"angle":round(angle,1),"dist_m":round(dist_m,2),"dist_ft":dist_ft,"grade":grade}
+    if not verdicts:
+        return "—"
+    score = round((verdicts.count("good") / len(verdicts)) * 10 - verdicts.count("warn") * 0.5)
+    return "A" if score >= 8 else "B" if score >= 6 else "C" if score >= 4 else "D"
+
+
+def render_report_section(label_text, label_class, section_data):
+    """Render one structured coaching report section."""
+    if not section_data:
+        return ""
+    summary = section_data.get("summary", "")
+    bullets = section_data.get("bullets", [])
+    bullets_html = "".join(f"<li>{b}</li>" for b in bullets)
+    return f"""
+    <div class="report-section">
+      <div class="report-section-label {label_class}">{label_text}</div>
+      <div class="report-summary">{summary}</div>
+      <ul class="report-bullets">{bullets_html}</ul>
+    </div>"""
 
 
 # ── SIDEBAR ──
 with st.sidebar:
     st.markdown('<div class="section-title">API KEY</div>', unsafe_allow_html=True)
-    api_key = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...", help="Session only")
+    api_key = st.text_input("Anthropic API Key", type="password",
+                            placeholder="sk-ant-...", help="Session only — never stored")
 
     st.markdown('<div class="section-title">EVENT</div>', unsafe_allow_html=True)
-    event_type = st.radio("Event", ["shot_spin","shot_glide","discus"],
+    event_type = st.radio("Event", ["shot_spin", "shot_glide", "discus"],
                           format_func=lambda x: EVENT_LABELS[x], label_visibility="collapsed")
 
     st.markdown('<div class="section-title">ATHLETE</div>', unsafe_allow_html=True)
@@ -317,218 +479,197 @@ with st.sidebar:
     athlete_notes = st.text_area("Notes", placeholder="Meet, drill, conditions...", height=68)
 
     st.markdown('<div class="section-title">VIDEO</div>', unsafe_allow_html=True)
-    uploaded = st.file_uploader("Upload throw video", type=["mp4","mov","webm","avi"])
+    uploaded = st.file_uploader("Upload throw video", type=["mp4", "mov", "webm", "avi"])
 
     st.markdown('<div class="section-title">METRICS</div>', unsafe_allow_html=True)
     if "physics" in st.session_state:
         p = st.session_state.physics
-        c1,c2 = st.columns(2)
+        g = st.session_state.get("grade", "—")
+        c1, c2 = st.columns(2)
         with c1:
             st.markdown(f'<div class="metric-card vel"><div class="metric-label">Velocity</div><div class="metric-val">{p["velocity"]}</div><div class="metric-unit">m/s</div></div>', unsafe_allow_html=True)
             st.markdown(f'<div class="metric-card dst"><div class="metric-label">Distance</div><div class="metric-val">{p["dist_ft"]}</div><div class="metric-unit">feet</div></div>', unsafe_allow_html=True)
         with c2:
             st.markdown(f'<div class="metric-card ang"><div class="metric-label">Angle</div><div class="metric-val">{p["angle"]}°</div><div class="metric-unit">deg</div></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="metric-card grd"><div class="metric-label">Grade</div><div class="metric-val">{p["grade"]}</div><div class="metric-unit">technique</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card grd"><div class="metric-label">Grade</div><div class="metric-val">{g}</div><div class="metric-unit">technique</div></div>', unsafe_allow_html=True)
     else:
-        st.caption("Complete frame assignment and run analysis to see metrics.")
+        st.caption("Assign frames and run analysis to see metrics.")
 
 
 # ── EXTRACT FRAMES ON UPLOAD ──
-# When a new video is uploaded, extract frames and store them. Clear old assignments.
 if uploaded:
-    uploaded_name = uploaded.name
-    if st.session_state.get("_last_upload") != uploaded_name:
-        st.session_state["_last_upload"] = uploaded_name
+    upload_id = uploaded.name + str(uploaded.size)
+    if st.session_state.get("_last_upload") != upload_id:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded.name)[1]) as tmp:
             tmp.write(uploaded.read())
             tmp_path = tmp.name
         with st.spinner("Extracting frames..."):
             frames = extract_frames(tmp_path)
-        try: os.unlink(tmp_path)
-        except: pass
-        st.session_state["frames"]       = frames
-        st.session_state["assignments"]  = {}   # pos_id -> frame index
-        st.session_state["active_pos"]   = 0    # which position slot is being assigned
-        # Clear any previous analysis
-        for k in ["analysis","physics","coaching"]:
-            st.session_state.pop(k, None)
-        st.rerun()
-else:
-    # No video — clear frames if previously set
-    if "frames" in st.session_state and st.session_state.get("_last_upload"):
-        st.session_state.pop("frames", None)
-        st.session_state.pop("assignments", None)
-        st.session_state.pop("active_pos", None)
-        st.session_state.pop("_last_upload", None)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        if frames:
+            st.session_state["frames"]       = frames
+            st.session_state["_last_upload"] = upload_id
+            for k in list(st.session_state.keys()):
+                if k.startswith("assigned_") or k in ("analysis", "physics", "coaching", "grade", "release_data"):
+                    del st.session_state[k]
+            st.success(f"{len(frames)} frames extracted. Assign each position below.")
+        else:
+            st.error("Frame extraction failed. Ensure opencv-python-headless is installed.")
+
+all_frames    = st.session_state.get("frames", [])
+analysis_done = "analysis" in st.session_state
 
 
 # ── MAIN HEADER ──
-hcol1, hcol2 = st.columns([3,1])
+hcol1, hcol2 = st.columns([3, 1])
 with hcol1:
     st.markdown(f"""
     <div style="border-bottom:2px solid #0f0d0b;padding-bottom:8px;margin-bottom:16px;">
       <span style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.5rem;letter-spacing:4px;text-transform:uppercase;">Position Breakdown</span>
       <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.65rem;letter-spacing:3px;color:#c41e2a;border:1px solid #c41e2a;padding:2px 8px;margin-left:12px;">{EVENT_LABELS[event_type]}</span>
-      <span style="font-size:0.55rem;color:#8a7d6e;margin-left:12px;">{athlete_name or 'No athlete loaded'}</span>
+      <span style="font-size:0.6rem;color:#8a7d6e;margin-left:12px;">{athlete_name or 'No athlete loaded'}</span>
     </div>
     """, unsafe_allow_html=True)
-
-all_frames   = st.session_state.get("frames", [])
-assignments  = st.session_state.get("assignments", {})
-active_pos   = st.session_state.get("active_pos", 0)
-n_assigned   = sum(1 for p in POSITIONS if p["id"] in assignments)
-
 with hcol2:
-    all_assigned = n_assigned == len(POSITIONS)
-    can_analyze  = all_assigned and api_key and bool(all_frames)
-    analyze_btn  = st.button("⚡ ANALYZE", type="primary",
-                             disabled=not can_analyze, use_container_width=True,
-                             help="Assign all 6 positions first" if not all_assigned else "")
-    report_btn   = st.button("↓ REPORT", disabled="analysis" not in st.session_state, use_container_width=True)
+    all_assigned = all_frames and all(
+        st.session_state.get(f"assigned_{i}") is not None for i in range(len(POSITIONS))
+    )
+    run_btn    = st.button("⚡ ANALYZE", type="primary",
+                           disabled=not all_assigned or not api_key,
+                           use_container_width=True,
+                           help="Assign all 7 positions first" if not all_assigned else "Run AI analysis")
+    report_btn = st.button("↓ REPORT", disabled=not analysis_done, use_container_width=True)
+    if analysis_done:
+        if st.button("↺ Reset", use_container_width=True):
+            for k in list(st.session_state.keys()):
+                if k.startswith("assigned_") or k in ("analysis", "physics", "coaching", "grade", "release_data"):
+                    del st.session_state[k]
+            st.rerun()
 
 
-# ════════════════════════════════════════════
-# STEP 1 — FRAME ASSIGNMENT UI
-# ════════════════════════════════════════════
-if all_frames and "analysis" not in st.session_state:
+# ══════════════════════════════════════════════
+# FRAME ASSIGNMENT (hidden after analysis)
+# ══════════════════════════════════════════════
+if all_frames and not analysis_done:
+    st.markdown('<div class="section-title">STEP 1 — ASSIGN FRAMES TO POSITIONS</div>',
+                unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">STEP 1 — ASSIGN FRAMES TO POSITIONS</div>', unsafe_allow_html=True)
-    st.caption(f"Click a position slot on the left, then click a frame on the right to assign it. "
-               f"**{n_assigned}/6 assigned.**")
-
-    left_col, right_col = st.columns([1, 3])
-
-    # ── Left: position slot list ──
-    with left_col:
-        for i, pos in enumerate(POSITIONS):
-            is_active  = (i == active_pos)
-            is_filled  = pos["id"] in assignments
-            slot_class = "pos-slot active" if is_active else ("pos-slot filled" if is_filled else "pos-slot")
-
-            if is_filled:
-                fi = assignments[pos["id"]]
-                assigned_time = all_frames[fi]["time"] if fi < len(all_frames) else "?"
-                status_html = f'<div class="pos-slot-status ok">✓ t={assigned_time}s assigned</div>'
+    # Status strip
+    status_cols = st.columns(len(POSITIONS))
+    for i, pos in enumerate(POSITIONS):
+        assigned_idx = st.session_state.get(f"assigned_{i}")
+        with status_cols[i]:
+            if assigned_idx is not None:
+                fr = all_frames[assigned_idx]
+                st.markdown(
+                    f'<div class="assign-card assigned">'
+                    f'<div class="assign-pos-name">{pos["icon"]} {pos["short"]}</div>'
+                    f'<div class="assign-status ok">t={fr["time"]}s</div>'
+                    f'</div>', unsafe_allow_html=True)
             else:
-                status_html = f'<div class="pos-slot-status miss">— not assigned</div>'
+                st.markdown(
+                    f'<div class="assign-card unassigned">'
+                    f'<div class="assign-pos-name">{pos["icon"]} {pos["short"]}</div>'
+                    f'<div class="assign-status missing">unassigned</div>'
+                    f'</div>', unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div class="{slot_class}">
-              <div class="pos-slot-name">{pos['icon']} {pos['short']}</div>
-              <div class="pos-slot-desc">{pos['desc']}</div>
-              {status_html}
-            </div>
-            """, unsafe_allow_html=True)
+    st.write("")
 
-            btn_label = "▶ Editing" if is_active else ("✎ Change" if is_filled else "Select")
-            btn_type  = "primary" if is_active else "secondary"
-            if st.button(btn_label, key=f"slot_btn_{i}", use_container_width=True, type=btn_type):
-                st.session_state["active_pos"] = i
-                st.rerun()
+    # Carousels
+    for i, pos in enumerate(POSITIONS):
+        assigned_idx  = st.session_state.get(f"assigned_{i}")
+        label_tag     = f"t={all_frames[assigned_idx]['time']}s" if assigned_idx is not None else "unassigned"
+        with st.expander(f"{pos['icon']} {pos['name']}  ·  {label_tag}", expanded=(assigned_idx is None)):
+            st.markdown(
+                f'<div style="font-size:0.7rem;color:#555;margin-bottom:8px;">'
+                f'<strong>{pos["desc"]}</strong></div>',
+                unsafe_allow_html=True)
+            criteria_text = "  ·  ".join(pos["criteria"][event_type])
+            st.caption(f"Look for: {criteria_text}")
+            st.divider()
 
-    # ── Right: frame carousel ──
-    with right_col:
-        active_pos_obj = POSITIONS[active_pos]
-        st.markdown(f"""
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.75rem;
-                    letter-spacing:3px;text-transform:uppercase;color:#c41e2a;margin-bottom:8px;">
-          Assigning: {active_pos_obj['icon']} {active_pos_obj['name']}
-          <span style="font-weight:400;color:#8a7d6e;margin-left:8px;font-size:0.6rem;">{active_pos_obj['desc']}</span>
-        </div>
-        """, unsafe_allow_html=True)
+            COLS = 4
+            for row_start in range(0, len(all_frames), COLS):
+                row_frames = all_frames[row_start:row_start + COLS]
+                cols = st.columns(COLS)
+                for j_rel, fr in enumerate(row_frames):
+                    j_abs = row_start + j_rel
+                    is_sel = (assigned_idx == j_abs)
+                    with cols[j_rel]:
+                        st.image(fr["img"], use_container_width=True,
+                                 caption=f"{'ASSIGNED  ' if is_sel else ''}t={fr['time']}s")
+                        if st.button(
+                            "Assigned" if is_sel else "Assign",
+                            key=f"assign_{i}_{j_abs}",
+                            type="primary" if is_sel else "secondary",
+                            use_container_width=True
+                        ):
+                            st.session_state[f"assigned_{i}"] = j_abs
+                            st.rerun()
 
-        # Show frames in rows of 4
-        ROW_SIZE = 4
-        current_assignment = assignments.get(active_pos_obj["id"])
-
-        for row_start in range(0, len(all_frames), ROW_SIZE):
-            row_frames = all_frames[row_start : row_start + ROW_SIZE]
-            cols = st.columns(len(row_frames))
-            for j_rel, fr in enumerate(row_frames):
-                j_abs = row_start + j_rel
-                with cols[j_rel]:
-                    is_selected = (j_abs == current_assignment)
-
-                    # Check if this frame is assigned to another position
-                    other_pos = next(
-                        (POSITIONS[k]["short"] for k, p in enumerate(POSITIONS)
-                         if p["id"] != active_pos_obj["id"] and assignments.get(p["id"]) == j_abs),
-                        None
-                    )
-
-                    st.image(fr["img"], use_container_width=True)
-
-                    if is_selected:
-                        label = f"✓ {fr['time']}s"
-                        btn_t = "primary"
-                    elif other_pos:
-                        label = f"[{other_pos}] {fr['time']}s"
-                        btn_t = "secondary"
-                    else:
-                        label = f"{fr['time']}s"
-                        btn_t = "secondary"
-
-                    if st.button(label, key=f"frame_{active_pos}_{j_abs}",
-                                 use_container_width=True, type=btn_t):
-                        st.session_state["assignments"][active_pos_obj["id"]] = j_abs
-                        # Auto-advance to next unassigned position
-                        next_unassigned = next(
-                            (k for k in range(len(POSITIONS))
-                             if POSITIONS[k]["id"] not in st.session_state["assignments"]),
-                            None
-                        )
-                        if next_unassigned is not None:
-                            st.session_state["active_pos"] = next_unassigned
-                        st.rerun()
-
-    # Progress bar
-    if n_assigned > 0:
-        st.progress(n_assigned / len(POSITIONS), text=f"{n_assigned}/6 positions assigned")
-    if all_assigned:
-        st.success("All 6 positions assigned. Hit **⚡ ANALYZE** to run the breakdown.")
+    if not all_assigned:
+        unassigned = [POSITIONS[i]["name"] for i in range(len(POSITIONS))
+                      if st.session_state.get(f"assigned_{i}") is None]
+        st.info(f"Still needed: **{', '.join(unassigned)}**", icon="📌")
+    else:
+        st.success("All 7 positions assigned. Click **⚡ ANALYZE** to run the breakdown.")
 
 
-# ════════════════════════════════════════════
-# STEP 2 — RUN ANALYSIS
-# ════════════════════════════════════════════
-if analyze_btn and can_analyze:
-    client = anthropic.Anthropic(api_key=api_key)
+# ══════════════════════════════════════════════
+# RUN ANALYSIS
+# ══════════════════════════════════════════════
+if run_btn and all_assigned and api_key:
+    client   = anthropic.Anthropic(api_key=api_key)
     progress = st.progress(0, text="Starting analysis...")
     log_area = st.empty()
     logs: list = []
 
     def log(msg, kind=""):
-        logs.append(("✓ " if kind=="ok" else "⚠ " if kind=="warn" else "› ") + msg)
+        logs.append(("✓ " if kind == "ok" else "⚠ " if kind == "warn" else "› ") + msg)
         log_area.code("\n".join(logs[-8:]), language=None)
 
     try:
+        # Pass 0 — physics from all frames
+        log(f"Pass 0 — reading all {len(all_frames)} frames for release physics...")
+        progress.progress(5, text="Estimating release physics from all frames...")
+        release_data = estimate_release_physics(client, all_frames, event_type)
+        physics = compute_physics(release_data, event_type)
+        log(f"Release: {physics['angle']}° at {physics['velocity']} m/s → {physics['dist_ft']}ft "
+            f"(confidence {physics['confidence_pct']}%)", "ok")
+
+        # Pass 1 — per-position technique analysis
         analysis_data = []
         for i, pos in enumerate(POSITIONS):
-            frame_idx = assignments[pos["id"]]
-            frame     = all_frames[frame_idx]
-            log(f"Analyzing {pos['name']} (t={frame['time']}s)...")
-            progress.progress(int(i / len(POSITIONS) * 85), text=f"Analyzing {pos['name']}...")
-
+            assigned_idx = st.session_state.get(f"assigned_{i}")
+            progress.progress(10 + int(i / len(POSITIONS) * 75), text=f"Analyzing {pos['name']}...")
+            frame = all_frames[assigned_idx]
+            log(f"Analyzing: {pos['name']} (t={frame['time']}s)...")
             result = analyze_position(client, frame, pos, event_type)
             result.update({"frame": frame, "posName": pos["name"], "posId": pos["id"]})
             analysis_data.append(result)
-            log(f"{pos['name']}: {result.get('verdict_label','—')}", "ok")
+            log(f"{pos['name']}: {result.get('verdict_label', '—')}", "ok")
 
-        progress.progress(90, text="Generating coaching report...")
-        log("Generating coaching report...")
-        physics  = compute_physics(analysis_data, event_type)
+        # Pass 2 — coaching report
+        progress.progress(88, text="Generating coaching report...")
+        grade   = grade_from_analysis(analysis_data)
         coaching = get_coaching(client, analysis_data, physics, event_type,
-                                athlete_name or "Athlete", athlete_pr)
+                                athlete_name or "Athlete", athlete_pr,
+                                release_data.get("notes", ""))
 
         st.session_state.update({
-            "analysis":   analysis_data,
-            "physics":    physics,
-            "coaching":   coaching,
-            "event_type": event_type,
-            "athlete":    athlete_name or "Athlete",
+            "analysis":      analysis_data,
+            "physics":       physics,
+            "release_data":  release_data,
+            "coaching":      coaching,
+            "grade":         grade,
+            "event_type":    event_type,
+            "athlete":       athlete_name or "Athlete",
         })
-        progress.progress(100, text="Analysis complete ✓")
-        log("Analysis complete", "ok")
+        progress.progress(100, text="Analysis complete!")
+        log("Done", "ok")
 
     except Exception as e:
         st.error(f"Analysis failed: {e}")
@@ -537,110 +678,167 @@ if analyze_btn and can_analyze:
     st.rerun()
 
 
-# ════════════════════════════════════════════
-# STEP 3 — DISPLAY RESULTS
-# ════════════════════════════════════════════
-if "analysis" in st.session_state:
+# ══════════════════════════════════════════════
+# RESULTS
+# ══════════════════════════════════════════════
+if analysis_done:
     analysis_data = st.session_state.analysis
-    ev            = st.session_state.get("event_type", event_type)
+    physics       = st.session_state.physics
+    coaching      = st.session_state.coaching
+    grade         = st.session_state.get("grade", "—")
+    release_data  = st.session_state.get("release_data", {})
 
-    # Re-assign button to go back and change frames
-    if all_frames:
-        if st.button("← Re-assign Frames", type="secondary"):
-            st.session_state.pop("analysis", None)
-            st.session_state.pop("physics", None)
-            st.session_state.pop("coaching", None)
-            st.rerun()
+    # Physics strip
+    st.markdown('<div class="section-title">PERFORMANCE METRICS</div>', unsafe_allow_html=True)
+    conf_note = f" · {physics['confidence_pct']}% confidence" if physics.get('confidence_pct') else ""
+    st.caption(f"Release physics estimated from full video analysis{conf_note}. "
+               f"Notes: {release_data.get('notes', '—')}")
+    st.markdown(f"""
+    <div class="phys-strip">
+      <div class="phys-card vel"><div class="phys-label">Est. Velocity</div><div class="phys-val">{physics['velocity']}</div><div class="phys-unit">m/s</div></div>
+      <div class="phys-card ang"><div class="phys-label">Release Angle</div><div class="phys-val">{physics['angle']}°</div><div class="phys-unit">degrees</div></div>
+      <div class="phys-card dst"><div class="phys-label">Predicted Dist.</div><div class="phys-val">{physics['dist_ft']}</div><div class="phys-unit">feet</div></div>
+      <div class="phys-card grd"><div class="phys-label">Technique Grade</div><div class="phys-val">{grade}</div><div class="phys-unit">overall</div></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">6-POSITION BREAKDOWN</div>', unsafe_allow_html=True)
-    grid_cols = st.columns(3)
+    # Position grid
+    st.markdown('<div class="section-title">POSITION BREAKDOWN</div>', unsafe_allow_html=True)
+    grid_cols = st.columns(4)  # 7 positions: row of 4, row of 3
 
     for i, pos in enumerate(POSITIONS):
-        data          = analysis_data[i] if i < len(analysis_data) else None
-        verdict       = (data or {}).get("verdict", "pending")
-        verdict_label = (data or {}).get("verdict_label", "PENDING")
-        one_line      = (data or {}).get("one_line", "Awaiting analysis")
-        current_frame = (data or {}).get("frame")
-        frame_time    = f"t={current_frame['time']:.2f}s" if current_frame else "—"
-        verdict_cls   = {"good":"verdict-good","warn":"verdict-warn","ok":"verdict-ok"}.get(verdict,"verdict-pending")
+        data    = analysis_data[i] if i < len(analysis_data) else None
+        verdict = (data or {}).get("verdict", "pending")
+        vl      = (data or {}).get("verdict_label", "PENDING")
+        ol      = (data or {}).get("one_line", "No frame assigned")
+        cue     = (data or {}).get("cue", "")
+        fr      = (data or {}).get("frame")
+        ftime   = f"t={fr['time']:.2f}s" if fr else "—"
 
-        with grid_cols[i % 3]:
-            if current_frame and current_frame.get("img"):
-                st.image(current_frame["img"], use_container_width=True)
+        vc, vbg, _ = VERDICT_COLORS.get(verdict, ("#555", "#f5f5f5", vl))
+
+        with grid_cols[i % 4]:
+            # Frame image
+            if fr and fr.get("img"):
+                st.image(fr["img"], use_container_width=True)
             else:
-                st.markdown(f'<div style="width:100%;aspect-ratio:4/3;background:#ede8e1;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#ccc;">{pos["icon"]}</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="width:100%;aspect-ratio:4/3;background:#ede8e1;'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'color:#ccc;font-size:2rem;">{pos["icon"]}</div>',
+                    unsafe_allow_html=True)
 
+            # Card body
             st.markdown(f"""
-            <div style="padding:10px 4px 4px 4px;">
-              <div class="pos-card-name">{pos['icon']} {pos['name']}</div>
-              <div class="pos-card-verdict {verdict_cls}">{verdict_label}</div>
-              <div class="pos-card-time">{frame_time}</div>
-              <div class="pos-card-note">{one_line}</div>
+            <div class="result-card-body">
+              <div class="result-pos-num">{pos['icon']} POSITION {i+1}</div>
+              <div class="result-pos-name">{pos['name']}</div>
+              <div class="result-verdict" style="background:{vbg};color:{vc};border:1px solid {vc}40;">{vl}</div>
+              <div class="result-oneline">{ol}</div>
+              <div class="result-time">{ftime}</div>
+              {"<div class='cue-box'>"+cue+"</div>" if cue else ""}
             </div>
             """, unsafe_allow_html=True)
 
             if data and data.get("checks"):
-                with st.expander("View checklist"):
+                with st.expander("Checklist"):
                     for c in data["checks"]:
-                        s    = c.get("status","")
-                        icon = "✓" if s=="pass" else "✗" if s=="fail" else "⚠"
-                        cls  = "check-pass" if s=="pass" else "check-fail" if s=="fail" else "check-warn"
-                        note = f" — <em style='color:#8a7d6e'>{c['note']}</em>" if c.get("note") else ""
-                        st.markdown(f'<div class="check-row"><span class="check-icon {cls}">{icon}</span><span>{c["criterion"]}{note}</span></div>', unsafe_allow_html=True)
-                    if data.get("cue"):
-                        st.markdown(f"**Cue:** *{data['cue']}*")
-            else:
-                with st.expander("Criteria"):
-                    for c in pos["criteria"][ev]:
-                        st.markdown(f'<div class="check-row"><span class="check-icon" style="color:#ccc">·</span><span>{c}</span></div>', unsafe_allow_html=True)
+                        s    = c.get("status", "")
+                        icon = "✓" if s == "pass" else "✗" if s == "fail" else "⚠"
+                        cls  = "check-pass" if s == "pass" else "check-fail" if s == "fail" else "check-warn"
+                        note_html = f'<div class="check-note">{c["note"]}</div>' if c.get("note") else ""
+                        st.markdown(
+                            f'<div class="check-row">'
+                            f'<span class="check-icon {cls}">{icon}</span>'
+                            f'<div><div>{c["criterion"]}</div>{note_html}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">COACHING ASSESSMENT</div>', unsafe_allow_html=True)
-    if "coaching" in st.session_state:
-        st.markdown(f'<div class="coaching-box">{st.session_state.coaching}</div>', unsafe_allow_html=True)
+    # Coaching report
+    st.markdown('<div class="section-title">COACHING REPORT</div>', unsafe_allow_html=True)
+
+    if "_raw" in coaching:
+        # Fallback plain text
+        st.markdown(f'<div style="background:#f7f3ee;border-left:4px solid #0f3460;padding:16px 18px;font-size:0.85rem;line-height:2;white-space:pre-wrap;">{coaching["_raw"]}</div>', unsafe_allow_html=True)
+    else:
+        opening = coaching.get("opening", "")
+        report_html = f"""
+        <div class="report-card">
+          {"<div class='report-section'><div style='font-size:1rem;font-weight:600;color:#0f0d0b;line-height:1.6;'>"+opening+"</div></div>" if opening else ""}
+          {render_report_section("STRENGTHS", "strengths", coaching.get("strengths"))}
+          {render_report_section("FAULTS TO FIX", "faults", coaching.get("faults"))}
+          {render_report_section("SESSION CUES", "cues", coaching.get("cues"))}
+          {render_report_section("NEXT SESSION FOCUS", "next", coaching.get("next"))}
+          {render_report_section("PROJECTION", "projection", coaching.get("projection"))}
+        </div>"""
+        st.markdown(report_html, unsafe_allow_html=True)
 
 
-# ════════════════════════════════════════════
+# ══════════════════════════════════════════════
 # DOWNLOAD REPORT
-# ════════════════════════════════════════════
-if report_btn and "analysis" in st.session_state:
-    p             = st.session_state.physics
-    data_list     = st.session_state.analysis
-    coaching_text = st.session_state.coaching
-    ev            = st.session_state.get("event_type", event_type)
-    ath           = st.session_state.get("athlete", athlete_name or "Athlete")
+# ══════════════════════════════════════════════
+if report_btn and analysis_done:
+    p         = st.session_state.physics
+    data_list = st.session_state.analysis
+    coaching  = st.session_state.coaching
+    ev        = st.session_state.get("event_type", event_type)
+    ath       = st.session_state.get("athlete", athlete_name or "Athlete")
+    grade     = st.session_state.get("grade", "—")
 
     cells_html = ""
     for i, pos in enumerate(POSITIONS):
         d   = data_list[i] if i < len(data_list) else None
-        v   = (d or {}).get("verdict","ok")
-        vl  = (d or {}).get("verdict_label","PENDING")
-        ol  = (d or {}).get("one_line","—")
-        col = {"good":"#1a5c3a","warn":"#c41e2a"}.get(v,"#0f3460")
-        img = (f'<img src="data:image/jpeg;base64,{d["frame"]["b64"]}" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block;">'
-               if d and d.get("frame") and d["frame"].get("b64")
-               else f'<div style="width:100%;aspect-ratio:4/3;background:#ede8e1;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:1.5rem;">{pos["icon"]}</div>')
-        cells_html += (f'<div style="border:1px solid #d4cabf;overflow:hidden;">{img}'
-                       f'<div style="padding:8px 10px;">'
-                       f'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:900;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">{pos["name"]}</div>'
-                       f'<div style="font-size:0.45rem;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:2px;padding:1px 6px;background:{col}18;color:{col};border:1px solid {col}40;display:inline-block;margin-top:3px;">{vl}</div>'
-                       f'<div style="font-size:0.5rem;color:#555;line-height:1.6;margin-top:4px;">{ol}</div>'
-                       f'</div></div>')
+        v   = (d or {}).get("verdict", "ok")
+        vl  = (d or {}).get("verdict_label", "PENDING")
+        ol  = (d or {}).get("one_line", "—")
+        cue = (d or {}).get("cue", "")
+        col = {"good": "#1a5c3a", "warn": "#c41e2a"}.get(v, "#0f3460")
+        bg  = {"good": "#e8f5ee", "warn": "#fdf0f0"}.get(v, "#e8eef5")
+        img = (
+            f'<img src="data:image/jpeg;base64,{d["frame"]["b64"]}" '
+            f'style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block;">'
+            if d and d.get("frame") and d["frame"].get("b64")
+            else f'<div style="width:100%;aspect-ratio:4/3;background:#ede8e1;'
+                 f'display:flex;align-items:center;justify-content:center;'
+                 f'color:#ccc;font-size:1.5rem;">{pos["icon"]}</div>'
+        )
+        cue_html = f'<div style="background:#0f0d0b;color:#fff;padding:6px 10px;font-size:0.5rem;margin-top:6px;"><span style="color:#c41e2a;font-size:0.4rem;letter-spacing:2px;display:block;">CUE</span>{cue}</div>' if cue else ""
+        cells_html += (
+            f'<div style="border:1px solid #e0d9d0;border-radius:4px;overflow:hidden;">{img}'
+            f'<div style="padding:10px 12px;">'
+            f'<div style="font-size:0.45rem;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-bottom:2px;">{pos["icon"]} Position {i+1}</div>'
+            f'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:900;font-size:1rem;letter-spacing:2px;text-transform:uppercase;">{pos["name"]}</div>'
+            f'<div style="font-size:0.5rem;font-weight:700;letter-spacing:2px;padding:2px 8px;background:{bg};color:{col};border:1px solid {col}40;display:inline-block;margin:4px 0;border-radius:2px;">{vl}</div>'
+            f'<div style="font-size:0.6rem;color:#333;line-height:1.5;font-weight:500;">{ol}</div>'
+            f'{cue_html}</div></div>'
+        )
 
-    faults_html = ""
-    for i, pos in enumerate(POSITIONS):
-        d = data_list[i] if i < len(data_list) else None
-        if not d or not d.get("checks"): continue
-        faults = [c for c in d["checks"] if c.get("status") != "pass"]
-        if not faults: continue
-        faults_html += f'<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:0.75rem;letter-spacing:2px;">{pos["name"].upper()}</div>'
-        for c in faults:
-            faults_html += f'<div style="font-size:0.55rem;color:#555;padding-left:12px;">⚠ {c["criterion"]} — {c.get("note","")}</div>'
-        faults_html += "</div>"
+    # Coaching HTML for report
+    if "_raw" in coaching:
+        coaching_body = f'<div style="white-space:pre-wrap;font-size:0.7rem;line-height:2;">{coaching["_raw"]}</div>'
+    else:
+        def section_html(label, color, sec):
+            if not sec: return ""
+            bullets = "".join(f'<li style="font-size:0.65rem;color:#444;padding:2px 0 2px 16px;position:relative;list-style:none;"><span style="position:absolute;left:0;color:#c41e2a;">→</span>{b}</li>' for b in sec.get("bullets",[]))
+            return (f'<div style="padding:14px 18px;border-bottom:1px solid #f0ebe4;">'
+                    f'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:900;font-size:0.55rem;letter-spacing:4px;text-transform:uppercase;color:{color};margin-bottom:6px;">{label}</div>'
+                    f'<div style="font-size:0.75rem;font-weight:600;color:#0f0d0b;margin-bottom:8px;">{sec.get("summary","")}</div>'
+                    f'<ul style="margin:0;padding:0;">{bullets}</ul></div>')
+
+        opening = coaching.get("opening","")
+        coaching_body = (
+            f'{"<div style=\'padding:14px 18px;border-bottom:1px solid #f0ebe4;font-size:0.85rem;font-weight:600;\'>"+opening+"</div>" if opening else ""}'
+            + section_html("STRENGTHS", "#1a5c3a", coaching.get("strengths"))
+            + section_html("FAULTS TO FIX", "#c41e2a", coaching.get("faults"))
+            + section_html("SESSION CUES", "#0f3460", coaching.get("cues"))
+            + section_html("NEXT SESSION FOCUS", "#c8920a", coaching.get("next"))
+            + section_html("PROJECTION", "#555", coaching.get("projection"))
+        )
 
     report_html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=Courier+Prime:wght@400;700&display=swap');
-body{{font-family:'Courier Prime',monospace;background:#fff;color:#0f0d0b;padding:32px;max-width:900px;margin:0 auto;}}
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=Inter:wght@400;500;600&display=swap');
+body{{font-family:'Inter',sans-serif;background:#fff;color:#0f0d0b;padding:32px;max-width:960px;margin:0 auto;}}
 .hdr{{border-bottom:3px solid #c41e2a;padding-bottom:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;}}
 .logo{{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:2rem;letter-spacing:8px;text-transform:uppercase;}}
 .logo em{{color:#c41e2a;font-style:normal;}}
@@ -648,20 +846,20 @@ body{{font-family:'Courier Prime',monospace;background:#fff;color:#0f0d0b;paddin
 .bar em{{color:#c41e2a;font-style:normal;}}
 .sec{{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.6rem;letter-spacing:5px;text-transform:uppercase;color:#8a7d6e;border-bottom:1px solid #d4cabf;padding-bottom:4px;margin-bottom:14px;margin-top:20px;}}
 .mets{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}}
-.met{{border:1px solid #d4cabf;padding:12px;border-top:3px solid #d4cabf;}}
+.met{{border:1px solid #e0d9d0;padding:12px;border-top:3px solid #e0d9d0;border-radius:4px;}}
 .met.v{{border-top-color:#0f3460;}}.met.a{{border-top-color:#c8920a;}}.met.d{{border-top-color:#1a5c3a;}}.met.f{{border-top-color:#c41e2a;}}
 .ml{{font-size:0.42rem;letter-spacing:2px;color:#8a7d6e;margin-bottom:4px;}}
 .mv{{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:2rem;line-height:1;}}
 .mu{{font-size:0.4rem;color:#8a7d6e;}}
-.grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px;}}
-.coaching{{background:#f7f3ee;border-left:4px solid #0f3460;padding:14px 16px;font-size:0.6rem;line-height:2;white-space:pre-wrap;margin-bottom:24px;}}
-.notes{{border:1px solid #d4cabf;padding:14px;min-height:70px;margin-bottom:24px;font-size:0.6rem;color:#aaa;font-style:italic;}}
+.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}}
+.report-card{{border:1px solid #e0d9d0;border-radius:4px;overflow:hidden;margin-bottom:24px;}}
+.notes{{border:1px solid #e0d9d0;padding:14px;min-height:70px;margin-bottom:24px;font-size:0.65rem;color:#aaa;font-style:italic;border-radius:4px;}}
 .footer{{border-top:1px solid #d4cabf;padding-top:10px;font-size:0.42rem;color:#aaa;letter-spacing:2px;display:flex;justify-content:space-between;}}
 @media print{{.noprint{{display:none!important;}}}}
 </style></head><body>
 <div class="hdr">
   <div><div class="logo">THROWS<em>LAB</em></div><div style="font-size:0.45rem;letter-spacing:4px;color:#aaa;">POSITION BREAKDOWN REPORT</div></div>
-  <div style="font-size:0.55rem;text-align:right;line-height:2;color:#666;">
+  <div style="font-size:0.6rem;text-align:right;line-height:2;color:#666;">
     <strong>{ath.upper()}</strong><br>{EVENT_LABELS[ev]}<br>{athlete_date}
     {"<br>PR: "+athlete_pr if athlete_pr else ""}{"<br><em>"+athlete_notes+"</em>" if athlete_notes else ""}
   </div>
@@ -672,13 +870,12 @@ body{{font-family:'Courier Prime',monospace;background:#fff;color:#0f0d0b;paddin
   <div class="met v"><div class="ml">Est. Release Velocity</div><div class="mv">{p['velocity']}</div><div class="mu">m/s</div></div>
   <div class="met a"><div class="ml">Release Angle</div><div class="mv">{p['angle']}°</div><div class="mu">degrees</div></div>
   <div class="met d"><div class="ml">Predicted Distance</div><div class="mv">{p['dist_ft']}</div><div class="mu">feet</div></div>
-  <div class="met f"><div class="ml">Technique Grade</div><div class="mv">{p['grade']}</div><div class="mu">overall</div></div>
+  <div class="met f"><div class="ml">Technique Grade</div><div class="mv">{grade}</div><div class="mu">overall</div></div>
 </div>
-<div class="sec">6-Position Breakdown</div>
+<div class="sec">7-Position Breakdown</div>
 <div class="grid">{cells_html}</div>
-{"<div class='sec'>Issues Flagged</div><div style='margin-bottom:24px;'>"+faults_html+"</div>" if faults_html.strip() else ""}
-<div class="sec">Coaching Assessment</div>
-<div class="coaching">{coaching_text}</div>
+<div class="sec">Coaching Report</div>
+<div class="report-card">{coaching_body}</div>
 <div class="sec">Coach Notes</div>
 <div class="notes" contenteditable="true">Click to add session notes...</div>
 <div class="footer">
@@ -686,7 +883,7 @@ body{{font-family:'Courier Prime',monospace;background:#fff;color:#0f0d0b;paddin
   <span>GENERATED {str(athlete_date).upper()}</span>
 </div>
 <div class="noprint" style="margin-top:20px;text-align:right;">
-  <button onclick="window.print()" style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:2px;padding:10px 24px;background:#0f0d0b;color:#fff;border:none;cursor:pointer;">🖨 PRINT / SAVE PDF</button>
+  <button onclick="window.print()" style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:2px;padding:10px 24px;background:#0f0d0b;color:#fff;border:none;cursor:pointer;border-radius:2px;">🖨 PRINT / SAVE PDF</button>
 </div>
 </body></html>"""
 
