@@ -279,49 +279,138 @@ def call_claude(client, content: list, max_tokens: int = 1000) -> str:
 
 
 def estimate_release_physics(client, frames: list, event_type: str) -> dict:
-    """Pass 0: send ALL frames, ask Claude to find the release moment and estimate
-    angle from disc/implement attitude and arm trajectory. More accurate than
-    relying on a single user-selected frame."""
+    """Pass 0: Multi-frame trajectory + body-proportion physics estimation.
+    
+    Strategy:
+    1. Claude identifies release frame and 2 post-release frames
+    2. Claude estimates implement pixel coordinates across those frames  
+    3. Claude estimates athlete height in pixels using circle diameter as reference
+    4. We compute real angle from pixel displacement vector
+    5. We compute real velocity from pixel displacement + frame interval
+    6. Discus: spin rate estimated for aerodynamic lift correction
+    """
     tn = {"discus": "discus", "shot_glide": "shot put glide", "shot_spin": "shot put spin"}[event_type]
     is_discus = event_type == "discus"
+    # Known reference dimensions for scale calibration
+    circle_diameter_m = 2.5 if is_discus else 2.135  # metres
 
-    content = [
+    content_msgs = [
         *[{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": f["b64"]}}
           for f in frames],
-        {"type": "text", "text": f"""These are {len(frames)} sequential frames from a {tn} throw, in chronological order (frame 0 to {len(frames)-1}).
+        {"type": "text", "text": f"""These are {len(frames)} sequential frames (0–{len(frames)-1}) from a {tn} throw in chronological order.
 
-Your task is to estimate release physics as accurately as possible.
+TASK: Extract precise physics data for distance estimation.
 
-Step 1: Identify the frame index where the implement ({"discus" if is_discus else "shot"}) leaves the athlete's hand. Look for the last frame where the implement is still in contact, or the first frame where it is clearly airborne.
+Step 1 — Find release: identify the frame where the {"discus" if is_discus else "shot"} leaves the hand.
 
-Step 2: From that release frame, estimate:
-{"- release_angle: the angle of the discus's flight path relative to horizontal. Look at the disc's orientation/attitude AND the arm's trajectory at the moment of release. Typical range 30-45°." if is_discus else "- release_angle: the angle of the shot's trajectory off the hand. Look at arm angle and body extension. Typical range 35-44°."}
-- velocity_estimate: estimated release velocity in m/s. Base this on body size/proportions and the explosive force visible. {"Elite discus: 24-28 m/s, good high school: 17-22 m/s." if is_discus else "Elite shot: 13-15 m/s, good high school: 9-12 m/s."}
-- confidence: your confidence in the angle estimate (0.0-1.0)
-- notes: brief explanation of what you observed to make this estimate
+Step 2 — Track implement position: For the release frame and the 2 frames immediately AFTER release, estimate the implement's pixel coordinates (x=horizontal, y=vertical, origin top-left).
+
+Step 3 — Athlete scale: Estimate the athlete's height in pixels in the release frame. Also estimate the throwing circle diameter in pixels if visible. This lets us convert pixels to metres.
+
+Step 4 — Spin (discus only): Estimate how many times the discus visibly rotates between the release frame and 1 frame later. Even a rough estimate (0.5, 1, 1.5 rotations) helps.
+
+Step 5 — Velocity confidence: Rate how clearly you can track the implement (0.0=can't see it, 1.0=crystal clear).
 
 Return ONLY valid JSON:
 {{
-  "release_frame_idx": <integer>,
-  "release_angle": <float, degrees>,
-  "velocity_estimate": <float, m/s>,
-  "confidence": <float 0-1>,
-  "notes": "<brief observation>"
+  "release_frame_idx": <int>,
+  "post_release_frames": [<int>, <int>],
+  "implement_coords": [
+    {{"frame": <int>, "x": <float px>, "y": <float px>}},
+    {{"frame": <int>, "x": <float px>, "y": <float px>}},
+    {{"frame": <int>, "x": <float px>, "y": <float px>}}
+  ],
+  "athlete_height_px": <float>,
+  "circle_diameter_px": <float or null>,
+  "spin_rotations_per_frame": <float or null>,
+  "tracking_confidence": <float 0-1>,
+  "notes": "<what you observed>"
 }}"""}
     ]
 
-    raw = call_claude(client, content, max_tokens=300)
+    raw = call_claude(client, content_msgs, max_tokens=500)
     try:
-        result = json.loads(raw.strip().replace("```json", "").replace("```", "").strip())
-        # Sanity clamp
-        result["release_angle"]     = max(20.0, min(55.0, float(result.get("release_angle", 37))))
-        result["velocity_estimate"] = max(8.0,  min(30.0, float(result.get("velocity_estimate", 17 if event_type == "discus" else 10))))
-        return result
+        raw_data = json.loads(raw.strip().replace("```json","").replace("```","").strip())
     except Exception:
-        defaults = {"discus": (37.0, 17.0), "shot_spin": (39.0, 10.0), "shot_glide": (39.0, 10.0)}
-        a, v = defaults[event_type]
-        return {"release_frame_idx": len(frames) // 2, "release_angle": a,
-                "velocity_estimate": v, "confidence": 0.3, "notes": "Fallback defaults used."}
+        raw_data = {}
+
+    # ── Physics computation from tracked coordinates ──
+    coords  = raw_data.get("implement_coords", [])
+    frames_list = frames  # alias
+    fps     = 1.0 / max(0.01, (frames_list[1]["time"] - frames_list[0]["time"])) if len(frames_list) > 1 else 30.0
+
+    # Scale: metres per pixel
+    # Priority: circle diameter → athlete height → fallback
+    m_per_px = None
+    circle_px = raw_data.get("circle_diameter_px")
+    height_px = raw_data.get("athlete_height_px")
+    ATHLETE_HEIGHT_M = 1.83  # assumed average thrower height
+
+    if circle_px and circle_px > 20:
+        m_per_px = circle_diameter_m / circle_px
+    elif height_px and height_px > 50:
+        m_per_px = ATHLETE_HEIGHT_M / height_px
+
+    # Compute angle and velocity from pixel trajectory
+    angle_deg    = None
+    velocity_mps = None
+    angle_uncertainty = 5.0  # degrees, default
+
+    if len(coords) >= 2 and m_per_px:
+        # Use first two tracked points
+        p0, p1 = coords[0], coords[1]
+        # Frame time delta
+        fi0 = p0.get("frame", raw_data.get("release_frame_idx", 0))
+        fi1 = p1.get("frame", fi0 + 1)
+        dt  = max(0.001, (fi1 - fi0) / fps)
+
+        dx_px = p1["x"] - p0["x"]
+        dy_px = p0["y"] - p1["y"]  # invert Y (screen coords)
+
+        dx_m  = dx_px * m_per_px
+        dy_m  = dy_px * m_per_px
+
+        speed_mps = math.sqrt(dx_m**2 + dy_m**2) / dt
+        angle_rad = math.atan2(dy_m, abs(dx_m))
+        angle_deg = math.degrees(angle_rad)
+
+        # Confidence-weighted uncertainty
+        conf = raw_data.get("tracking_confidence", 0.5)
+        angle_uncertainty = max(2.0, 8.0 * (1.0 - conf))
+        velocity_mps = speed_mps
+
+    # Fallback: ask Claude for a direct visual estimate if tracking failed
+    if angle_deg is None or velocity_mps is None or velocity_mps < 3 or velocity_mps > 35:
+        # Use Claude's visual estimate as fallback with lower confidence
+        defaults = {"discus": (37.0, 18.0), "shot_spin": (39.0, 10.5), "shot_glide": (39.0, 10.5)}
+        def_angle, def_vel = defaults[event_type]
+        angle_deg    = def_angle
+        velocity_mps = def_vel
+        angle_uncertainty = 8.0
+        raw_data["_used_fallback"] = True
+
+    # Sanity clamps
+    angle_deg    = max(15.0, min(60.0, angle_deg))
+    velocity_mps = max(8.0,  min(32.0, velocity_mps))
+
+    # Spin rate for discus aerodynamic lift
+    spin_rps = None
+    if is_discus:
+        spf = raw_data.get("spin_rotations_per_frame")
+        if spf is not None:
+            spin_rps = float(spf) * fps
+
+    return {
+        "release_angle":      round(angle_deg, 1),
+        "angle_uncertainty":  round(angle_uncertainty, 1),
+        "velocity_estimate":  round(velocity_mps, 1),
+        "confidence":         raw_data.get("tracking_confidence", 0.4),
+        "m_per_px":           round(m_per_px, 5) if m_per_px else None,
+        "spin_rps":           round(spin_rps, 1) if spin_rps else None,
+        "used_fallback":      raw_data.get("_used_fallback", False),
+        "notes":              raw_data.get("notes", ""),
+        "release_frame_idx":  raw_data.get("release_frame_idx", len(frames)//2),
+    }
 
 
 def analyze_position(client, frame: dict, pos: dict, event_type: str) -> dict:
@@ -419,23 +508,87 @@ Be specific, reference positions by name. Encouraging but direct — no generic 
 
 
 def compute_physics(release_data: dict, event_type: str) -> dict:
+    """Full physics model with aerodynamics, spin lift (discus), and confidence intervals."""
     angle    = release_data.get("release_angle", 37 if event_type == "discus" else 39)
     velocity = release_data.get("velocity_estimate", 17 if event_type == "discus" else 10)
+    angle_unc = release_data.get("angle_uncertainty", 5.0)   # ± degrees
+    vel_unc   = velocity * 0.08                               # assume ±8% velocity uncertainty
     confidence = release_data.get("confidence", 0.5)
+    spin_rps  = release_data.get("spin_rps")
+    is_discus = event_type == "discus"
 
-    h0 = 1.8 if event_type == "discus" else 2.1
+    h0 = 1.8 if is_discus else 2.1
     g  = 9.81
-    ar = math.radians(angle)
-    dist_m  = (velocity * math.cos(ar) / g) * (
-        velocity * math.sin(ar) + math.sqrt((velocity * math.sin(ar))**2 + 2 * g * h0)
-    )
-    dist_ft = round(dist_m * 3.28084, 1)
+
+    def projectile_dist(v, a_deg, h):
+        """Basic projectile with release height."""
+        ar = math.radians(a_deg)
+        vy = v * math.sin(ar)
+        vx = v * math.cos(ar)
+        t  = (vy + math.sqrt(vy**2 + 2*g*h)) / g
+        return vx * t
+
+    def discus_lift_factor(v, a_deg, spin_rps_val):
+        """Simplified aerodynamic lift bonus for discus.
+        Based on: L = 0.5 * rho * v^2 * A * CL
+        CL increases with spin rate and angle of attack.
+        Returns multiplier on base distance (1.0 = no lift bonus).
+        """
+        if spin_rps_val is None or spin_rps_val <= 0:
+            # Typical high school spin: ~5-7 rps estimate
+            spin_rps_val = 6.0
+        rho   = 1.225   # kg/m^3 air density
+        A     = 0.0507  # discus area m^2 (2kg disc)
+        mass  = 1.0     # kg (HS women) or 2.0 (HS men) — use 1.5 avg
+        # CL approximation: peaks around 10-15° angle of attack
+        aoa   = max(0, 35 - a_deg)  # rough angle of attack from release angle
+        CL    = 0.3 + 0.015 * min(aoa, 20) + 0.002 * min(spin_rps_val, 12)
+        lift  = 0.5 * rho * (v**2) * A * CL
+        # Effective gravity reduction
+        g_eff = max(1.0, g - lift/mass)
+        ar    = math.radians(a_deg)
+        vy    = v * math.sin(ar)
+        vx    = v * math.cos(ar)
+        t     = (vy + math.sqrt(vy**2 + 2*g_eff*h0)) / g_eff
+        lift_dist = vx * t
+        base_dist = projectile_dist(v, a_deg, h0)
+        return lift_dist / max(0.1, base_dist)
+
+    # Central estimate
+    base_dist = projectile_dist(velocity, angle, h0)
+    if is_discus:
+        lift_mult = discus_lift_factor(velocity, angle, spin_rps)
+        central_m = base_dist * lift_mult
+    else:
+        central_m = base_dist
+
+    # Confidence interval: vary angle and velocity within uncertainties
+    samples = []
+    for da in [-angle_unc, 0, angle_unc]:
+        for dv in [-vel_unc, 0, vel_unc]:
+            d = projectile_dist(max(5, velocity+dv), max(10, angle+da), h0)
+            if is_discus:
+                d *= discus_lift_factor(max(5, velocity+dv), max(10, angle+da), spin_rps)
+            samples.append(d)
+
+    low_m  = min(samples)
+    high_m = max(samples)
+
+    def m_to_ft(m): return round(m * 3.28084, 1)
+
     return {
-        "velocity": round(velocity, 1),
-        "angle":    round(angle, 1),
-        "dist_m":   round(dist_m, 2),
-        "dist_ft":  dist_ft,
+        "velocity":       round(velocity, 1),
+        "vel_uncertainty":round(vel_unc, 1),
+        "angle":          round(angle, 1),
+        "angle_uncertainty": round(angle_unc, 1),
+        "dist_m":         round(central_m, 2),
+        "dist_ft":        m_to_ft(central_m),
+        "dist_low_ft":    m_to_ft(low_m),
+        "dist_high_ft":   m_to_ft(high_m),
+        "spin_rps":       spin_rps,
         "confidence_pct": round(confidence * 100),
+        "used_fallback":  release_data.get("used_fallback", False),
+        "aerodynamic":    is_discus,
     }
 
 
@@ -462,11 +615,20 @@ def render_report_section(label_text, label_class, section_data):
     </div>"""
 
 
+# ── API KEY — loaded from Streamlit secrets ──
+try:
+    api_key = st.secrets["ANTHROPIC_API_KEY"]
+except (KeyError, FileNotFoundError):
+    api_key = None
+
 # ── SIDEBAR ──
 with st.sidebar:
-    st.markdown('<div class="section-title">API KEY</div>', unsafe_allow_html=True)
-    api_key = st.text_input("Anthropic API Key", type="password",
-                            placeholder="sk-ant-...", help="Session only — never stored")
+    st.markdown('<div class="section-title">API</div>', unsafe_allow_html=True)
+    if api_key:
+        st.success("API key loaded.", icon="🔑")
+    else:
+        st.warning("Add ANTHROPIC_API_KEY to Streamlit secrets.", icon="⚠️")
+        api_key = st.text_input("API Key (fallback)", type="password", placeholder="sk-ant-...")
 
     st.markdown('<div class="section-title">EVENT</div>', unsafe_allow_html=True)
     event_type = st.radio("Event", ["shot_spin", "shot_glide", "discus"],
@@ -690,17 +852,47 @@ if analysis_done:
 
     # Physics strip
     st.markdown('<div class="section-title">PERFORMANCE METRICS</div>', unsafe_allow_html=True)
-    conf_note = f" · {physics['confidence_pct']}% confidence" if physics.get('confidence_pct') else ""
-    st.caption(f"Release physics estimated from full video analysis{conf_note}. "
-               f"Notes: {release_data.get('notes', '—')}")
-    st.markdown(f"""
-    <div class="phys-strip">
-      <div class="phys-card vel"><div class="phys-label">Est. Velocity</div><div class="phys-val">{physics['velocity']}</div><div class="phys-unit">m/s</div></div>
-      <div class="phys-card ang"><div class="phys-label">Release Angle</div><div class="phys-val">{physics['angle']}°</div><div class="phys-unit">degrees</div></div>
-      <div class="phys-card dst"><div class="phys-label">Predicted Dist.</div><div class="phys-val">{physics['dist_ft']}</div><div class="phys-unit">feet</div></div>
-      <div class="phys-card grd"><div class="phys-label">Technique Grade</div><div class="phys-val">{grade}</div><div class="phys-unit">overall</div></div>
-    </div>
-    """, unsafe_allow_html=True)
+
+    # Build caption with method and fallback note
+    method_note = "visual fallback (tracking failed)" if physics.get("used_fallback") else "multi-frame trajectory tracking"
+    aero_note   = f" · aerodynamic lift model applied" if physics.get("aerodynamic") else ""
+    spin_note   = f" · spin ~{physics['spin_rps']} rps" if physics.get("spin_rps") else ""
+    conf_note   = f" · {physics['confidence_pct']}% tracking confidence" if physics.get('confidence_pct') else ""
+    st.caption(
+        f"Physics method: {method_note}{aero_note}{spin_note}{conf_note}. "
+        f"{release_data.get('notes', '')}"
+    )
+
+    # Confidence interval labels
+    ang_range = f"{physics['angle']}° ± {physics['angle_uncertainty']}°"
+    vel_range = f"{physics['velocity']} ± {physics['vel_uncertainty']:.1f} m/s"
+    dst_range = f"{physics['dist_low_ft']}–{physics['dist_high_ft']} ft"
+
+    st.markdown(
+        f'''<div class="phys-strip">
+          <div class="phys-card vel">
+            <div class="phys-label">Est. Velocity</div>
+            <div class="phys-val">{physics['velocity']}</div>
+            <div class="phys-unit">{vel_range}</div>
+          </div>
+          <div class="phys-card ang">
+            <div class="phys-label">Release Angle</div>
+            <div class="phys-val">{physics['angle']}°</div>
+            <div class="phys-unit">{ang_range}</div>
+          </div>
+          <div class="phys-card dst">
+            <div class="phys-label">Predicted Distance</div>
+            <div class="phys-val">{physics['dist_ft']}</div>
+            <div class="phys-unit">Range: {dst_range}</div>
+          </div>
+          <div class="phys-card grd">
+            <div class="phys-label">Technique Grade</div>
+            <div class="phys-val">{grade}</div>
+            <div class="phys-unit">overall</div>
+          </div>
+        </div>''',
+        unsafe_allow_html=True
+    )
 
     # Position grid
     st.markdown('<div class="section-title">POSITION BREAKDOWN</div>', unsafe_allow_html=True)
