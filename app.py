@@ -279,104 +279,138 @@ def call_claude(client, content: list, max_tokens: int = 1000) -> str:
 
 
 def estimate_release_physics(client, frames: list, event_type: str) -> dict:
-    """Pass 0: Structured visual rubric for release physics.
+    """Pass 0: Two-axis lookup for velocity + qualitative angle label.
 
-    Claude reasons through velocity using a performance-level rubric
-    (elite / good / average / developing) and angle from body/implement
-    geometry — no pixel coordinate guessing.
+    Claude classifies:
+      - athlete_build: small / medium / large
+      - throw_quality: poor / average / good / excellent
+      - angle_label:   flat / low / optimal / high
+
+    Velocity is read from a hardcoded lookup table — Claude never picks
+    a raw number, so it can't hallucinate 26 m/s.
     """
     tn        = {"discus":"discus","shot_glide":"shot put glide","shot_spin":"shot put spin"}[event_type]
     is_discus = event_type == "discus"
 
-    # Reference ranges grounded in real-world performance data
+    # ── Velocity lookup table (m/s) — (build) × (quality) ──
+    # Values are (low, mid, high) for confidence interval
     if is_discus:
-        vel_table = """
-Velocity reference (discus, 1kg women / 2kg men):
-  Elite college/post-collegiate : 24-28 m/s → 160-200+ ft
-  Good high school varsity       : 19-23 m/s → 120-155 ft
-  Average high school            : 15-18 m/s →  90-120 ft
-  Developing / beginner          : 10-14 m/s →  55-90 ft"""
-        angle_ref = "Optimal discus release angle: 35-40°. Too flat (<30°) loses distance. Too high (>45°) loses range."
-        spin_note = "Estimate discus spin: count visible rotations between release and next frame. Typical HS: 4-8 rps."
+        VEL_TABLE = {
+            ("small",  "poor"):      (10.0, 11.5, 13.0),
+            ("small",  "average"):   (12.0, 13.5, 15.0),
+            ("small",  "good"):      (14.0, 15.5, 17.0),
+            ("small",  "excellent"): (16.0, 17.5, 19.0),
+            ("medium", "poor"):      (12.0, 13.5, 15.0),
+            ("medium", "average"):   (14.5, 16.0, 17.5),
+            ("medium", "good"):      (17.0, 18.5, 20.0),
+            ("medium", "excellent"): (19.0, 20.5, 22.0),
+            ("large",  "poor"):      (14.0, 15.5, 17.0),
+            ("large",  "average"):   (17.0, 18.5, 20.0),
+            ("large",  "good"):      (19.5, 21.0, 23.0),
+            ("large",  "excellent"): (22.0, 24.0, 26.0),
+        }
+        angle_map = {"flat": 28.0, "low": 33.0, "optimal": 38.0, "high": 44.0}
+        build_guide = "small=<165cm or slight build, medium=165-185cm average build, large=>185cm or heavily muscled"
+        quality_guide = (
+            "poor=stumbling/off-balance/no hip drive, "
+            "average=basic mechanics but clearly inefficient, "
+            "good=solid technique with minor faults, "
+            "excellent=powerful hip drive, full extension, clean release"
+        )
     else:
-        vel_table = """
-Velocity reference (shot put):
-  Elite college/post-collegiate : 13-15 m/s → 55-70+ ft
-  Good high school varsity       : 10-12 m/s → 40-52 ft
-  Average high school            : 8-10 m/s  → 30-42 ft
-  Developing / beginner          : 6-8 m/s   → 20-32 ft"""
-        angle_ref = "Optimal shot release angle: 38-42°. Assess from elbow height and arm trajectory."
-        spin_note = ""
+        VEL_TABLE = {
+            ("small",  "poor"):      (5.5,  6.5,  7.5),
+            ("small",  "average"):   (7.0,  8.0,  9.0),
+            ("small",  "good"):      (8.5,  9.5, 10.5),
+            ("small",  "excellent"): (9.5, 10.5, 11.5),
+            ("medium", "poor"):      (6.5,  7.5,  8.5),
+            ("medium", "average"):   (8.0,  9.0, 10.0),
+            ("medium", "good"):      (9.5, 10.5, 11.5),
+            ("medium", "excellent"): (11.0,12.0, 13.0),
+            ("large",  "poor"):      (7.5,  8.5,  9.5),
+            ("large",  "average"):   (9.0, 10.0, 11.0),
+            ("large",  "good"):      (10.5,11.5, 12.5),
+            ("large",  "excellent"): (12.0,13.0, 14.0),
+        }
+        angle_map = {"flat": 30.0, "low": 35.0, "optimal": 40.0, "high": 45.0}
+        build_guide = "small=<170cm or slight, medium=170-188cm average, large=>188cm or heavily built"
+        quality_guide = (
+            "poor=stumbling/falling/no power, "
+            "average=basic mechanics but weak or inefficient, "
+            "good=solid hip drive and extension with minor faults, "
+            "excellent=explosive full-body power, clean mechanics"
+        )
 
     content_msgs = [
         *[{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":f["b64"]}}
           for f in frames],
         {"type":"text","text":f"""These are {len(frames)} sequential frames (0–{len(frames)-1}) from a {tn} throw.
 
-You are estimating release physics for distance prediction. Work through this step by step.
+Classify three things. Be conservative — err toward smaller build and lower quality when unsure.
 
-STEP 1 — Find the release frame.
-Identify the frame index where the {"discus" if is_discus else "shot"} leaves the athlete's hand.
+1. ATHLETE BUILD — which category fits best?
+   {build_guide}
+   Options: small | medium | large
 
-STEP 2 — Assess performance level.
-Look at the athlete's body size, muscle development, and the explosiveness visible at release.
-Then look at the overall throw quality. Using this rubric:
-{vel_table}
-Choose the category that best fits this athlete and throw. Be honest — most high school athletes are "average" to "good", not elite.
+2. THROW QUALITY — assess the overall throw, especially at release:
+   {quality_guide}
+   Options: poor | average | good | excellent
 
-STEP 3 — Estimate release angle.
-{angle_ref}
-Look at the release frame: where is the elbow relative to the shoulder? What trajectory does the implement appear to leave on?
+3. RELEASE ANGLE — what label best describes the angle the implement leaves the hand?
+   flat  = clearly too flat, arm sweeping low (<32°)
+   low   = slightly below optimal (32–36°)
+   optimal = good release angle (36–41°)
+   high  = too steep, arm pushing up (>41°)
+   Options: flat | low | optimal | high
 
-STEP 4 — Assess angle quality.
-Was this a flat release (<32°), low-normal (32-36°), optimal (36-41°), or too high (>42°)?
-{("STEP 5 — Estimate spin rate. " + spin_note) if is_discus else ""}
+4. RELEASE FRAME — which frame index shows the moment of release?
 
-STEP 5 — Confidence.
-How clearly visible is the release moment? (0.0=blurry/hidden, 1.0=crystal clear)
+5. CONFIDENCE — how clearly visible is the release? (0.0=hidden/blurry, 1.0=crystal clear)
 
 Return ONLY valid JSON:
 {{
+  "athlete_build": "small|medium|large",
+  "throw_quality": "poor|average|good|excellent",
+  "angle_label": "flat|low|optimal|high",
   "release_frame_idx": <int>,
-  "performance_level": "elite|good|average|developing",
-  "velocity_estimate": <float m/s — pick midpoint of chosen range>,
-  "release_angle": <float degrees>,
-  "angle_quality": "flat|low|optimal|high",
-  "spin_rps": <float or null>,
   "confidence": <float 0-1>,
-  "reasoning": "<2-3 sentences explaining your velocity and angle choices>",
-  "notes": "<brief observation about release>"
+  "notes": "<one sentence on what you observed at release>"
 }}"""}
     ]
 
-    raw = call_claude(client, content_msgs, max_tokens=600)
+    raw = call_claude(client, content_msgs, max_tokens=300)
     try:
         result = json.loads(raw.strip().replace("```json","").replace("```","").strip())
     except Exception:
         result = {}
 
-    # Sanity clamps — wide enough to not strangle real estimates
-    angle = float(result.get("release_angle", 37 if is_discus else 39))
-    vel   = float(result.get("velocity_estimate", 18 if is_discus else 10.5))
-    angle = max(20.0, min(55.0, angle))
-    vel   = max(9.0,  min(30.0, vel))
+    build   = result.get("athlete_build", "medium")
+    quality = result.get("throw_quality", "average")
+    a_label = result.get("angle_label", "optimal")
+    conf    = float(result.get("confidence", 0.5))
 
-    # Angle uncertainty based on confidence + angle quality
-    conf      = float(result.get("confidence", 0.5))
-    aq        = result.get("angle_quality", "optimal")
-    base_unc  = {"flat": 6.0, "low": 4.0, "optimal": 3.0, "high": 5.0}.get(aq, 4.0)
-    angle_unc = base_unc + (1.0 - conf) * 4.0  # lower confidence → wider interval
+    # Validate — default to medium/average if Claude returns garbage
+    if build   not in ("small","medium","large"):      build   = "medium"
+    if quality not in ("poor","average","good","excellent"): quality = "average"
+    if a_label not in ("flat","low","optimal","high"): a_label = "optimal"
+
+    vel_low, vel_mid, vel_high = VEL_TABLE[(build, quality)]
+    angle_deg = angle_map[a_label]
 
     return {
-        "release_angle":     round(angle, 1),
-        "angle_uncertainty": round(angle_unc, 1),
-        "velocity_estimate": round(vel, 1),
+        "release_angle":     angle_deg,
+        "angle_uncertainty": 4.0,   # fixed — we're using a label anyway
+        "angle_label":       a_label,
+        "velocity_estimate": vel_mid,
+        "vel_low":           vel_low,
+        "vel_high":          vel_high,
         "confidence":        conf,
-        "spin_rps":          result.get("spin_rps"),
+        "spin_rps":          None,
         "used_fallback":     False,
-        "notes":             result.get("reasoning") or result.get("notes", ""),
+        "athlete_build":     build,
+        "throw_quality":     quality,
+        "notes":             result.get("notes",""),
         "release_frame_idx": result.get("release_frame_idx", len(frames)//2),
-        "performance_level": result.get("performance_level", "average"),
     }
 
 
@@ -475,68 +509,36 @@ Be specific, reference positions by name. Encouraging but direct — no generic 
 
 
 def compute_physics(release_data: dict, event_type: str) -> dict:
-    """Full physics model with aerodynamics, spin lift (discus), and confidence intervals."""
+    """Physics model using table-derived velocity range and angle label."""
     angle    = release_data.get("release_angle", 37 if event_type == "discus" else 39)
-    velocity = release_data.get("velocity_estimate", 17 if event_type == "discus" else 10)
-    angle_unc = release_data.get("angle_uncertainty", 5.0)   # ± degrees
-    vel_unc   = velocity * 0.08                               # assume ±8% velocity uncertainty
+    vel_mid  = release_data.get("velocity_estimate", 18 if event_type == "discus" else 10)
+    vel_low  = release_data.get("vel_low",  vel_mid * 0.88)
+    vel_high = release_data.get("vel_high", vel_mid * 1.12)
+    a_label  = release_data.get("angle_label", "optimal")
     confidence = release_data.get("confidence", 0.5)
-    spin_rps  = release_data.get("spin_rps")
-    is_discus = event_type == "discus"
+    is_discus  = event_type == "discus"
 
     h0 = 1.8 if is_discus else 2.1
     g  = 9.81
 
     def projectile_dist(v, a_deg, h):
-        """Basic projectile with release height."""
         ar = math.radians(a_deg)
         vy = v * math.sin(ar)
         vx = v * math.cos(ar)
-        t  = (vy + math.sqrt(vy**2 + 2*g*h)) / g
+        t  = (vy + math.sqrt(max(0, vy**2 + 2*g*h))) / g
         return vx * t
 
-    def discus_lift_factor(v, a_deg, spin_rps_val):
-        """Simplified aerodynamic lift bonus for discus.
-        Based on: L = 0.5 * rho * v^2 * A * CL
-        CL increases with spin rate and angle of attack.
-        Returns multiplier on base distance (1.0 = no lift bonus).
-        """
-        if spin_rps_val is None or spin_rps_val <= 0:
-            # Typical high school spin: ~5-7 rps estimate
-            spin_rps_val = 6.0
-        rho   = 1.225   # kg/m^3 air density
-        A     = 0.0507  # discus area m^2 (2kg disc)
-        mass  = 1.0     # kg (HS women) or 2.0 (HS men) — use 1.5 avg
-        # CL approximation: peaks around 10-15° angle of attack
-        aoa   = max(0, 35 - a_deg)  # rough angle of attack from release angle
-        CL    = 0.3 + 0.015 * min(aoa, 20) + 0.002 * min(spin_rps_val, 12)
-        lift  = 0.5 * rho * (v**2) * A * CL
-        # Effective gravity reduction
-        g_eff = max(1.0, g - lift/mass)
-        ar    = math.radians(a_deg)
-        vy    = v * math.sin(ar)
-        vx    = v * math.cos(ar)
-        t     = (vy + math.sqrt(vy**2 + 2*g_eff*h0)) / g_eff
-        lift_dist = vx * t
-        base_dist = projectile_dist(v, a_deg, h0)
-        return lift_dist / max(0.1, base_dist)
+    # Angle uncertainty from label quality
+    angle_unc = {"flat": 5.0, "low": 4.0, "optimal": 3.0, "high": 5.0}.get(a_label, 4.0)
 
     # Central estimate
-    base_dist = projectile_dist(velocity, angle, h0)
-    if is_discus:
-        lift_mult = discus_lift_factor(velocity, angle, spin_rps)
-        central_m = base_dist * lift_mult
-    else:
-        central_m = base_dist
+    central_m = projectile_dist(vel_mid, angle, h0)
 
-    # Confidence interval: vary angle and velocity within uncertainties
+    # Range: vary across vel_low/vel_high and angle ± uncertainty
     samples = []
-    for da in [-angle_unc, 0, angle_unc]:
-        for dv in [-vel_unc, 0, vel_unc]:
-            d = projectile_dist(max(5, velocity+dv), max(10, angle+da), h0)
-            if is_discus:
-                d *= discus_lift_factor(max(5, velocity+dv), max(10, angle+da), spin_rps)
-            samples.append(d)
+    for v in (vel_low, vel_mid, vel_high):
+        for da in (-angle_unc, 0, angle_unc):
+            samples.append(projectile_dist(max(5, v), max(15, angle + da), h0))
 
     low_m  = min(samples)
     high_m = max(samples)
@@ -544,18 +546,22 @@ def compute_physics(release_data: dict, event_type: str) -> dict:
     def m_to_ft(m): return round(m * 3.28084, 1)
 
     return {
-        "velocity":       round(velocity, 1),
-        "vel_uncertainty":round(vel_unc, 1),
-        "angle":          round(angle, 1),
+        "velocity":          round(vel_mid, 1),
+        "vel_low":           round(vel_low, 1),
+        "vel_high":          round(vel_high, 1),
+        "vel_uncertainty":   round((vel_high - vel_low) / 2, 1),
+        "angle":             round(angle, 1),
+        "angle_label":       a_label,
         "angle_uncertainty": round(angle_unc, 1),
-        "dist_m":         round(central_m, 2),
-        "dist_ft":        m_to_ft(central_m),
-        "dist_low_ft":    m_to_ft(low_m),
-        "dist_high_ft":   m_to_ft(high_m),
-        "spin_rps":       spin_rps,
-        "confidence_pct": round(confidence * 100),
-        "used_fallback":  release_data.get("used_fallback", False),
-        "aerodynamic":    is_discus,
+        "dist_m":            round(central_m, 2),
+        "dist_ft":           m_to_ft(central_m),
+        "dist_low_ft":       m_to_ft(low_m),
+        "dist_high_ft":      m_to_ft(high_m),
+        "confidence_pct":    round(confidence * 100),
+        "used_fallback":     release_data.get("used_fallback", False),
+        "aerodynamic":       is_discus,
+        "athlete_build":     release_data.get("athlete_build", "medium"),
+        "throw_quality":     release_data.get("throw_quality", "average"),
     }
 
 
@@ -820,37 +826,36 @@ if analysis_done:
     # Physics strip
     st.markdown('<div class="section-title">PERFORMANCE METRICS</div>', unsafe_allow_html=True)
 
-    # Build caption with method and fallback note
-    method_note = "visual fallback (tracking failed)" if physics.get("used_fallback") else "multi-frame trajectory tracking"
-    aero_note   = f" · aerodynamic lift model applied" if physics.get("aerodynamic") else ""
-    spin_note   = f" · spin ~{physics['spin_rps']} rps" if physics.get("spin_rps") else ""
-    conf_note   = f" · {physics['confidence_pct']}% tracking confidence" if physics.get('confidence_pct') else ""
-    st.caption(
-        f"Physics method: {method_note}{aero_note}{spin_note}{conf_note}. "
-        f"{release_data.get('notes', '')}"
-    )
+    # Labels for display
+    a_label      = physics.get("angle_label", "optimal").upper()
+    a_label_color = {"FLAT":"#c41e2a","LOW":"#c8920a","OPTIMAL":"#1a5c3a","HIGH":"#c8920a"}.get(a_label,"#555")
+    build_txt    = physics.get("athlete_build","medium").upper()
+    quality_txt  = physics.get("throw_quality","average").upper()
+    dst_range    = f"{physics['dist_low_ft']}–{physics['dist_high_ft']} ft"
+    conf_pct     = physics.get("confidence_pct", 50)
 
-    # Confidence interval labels
-    ang_range = f"{physics['angle']}° ± {physics['angle_uncertainty']}°"
-    vel_range = f"{physics['velocity']} ± {physics['vel_uncertainty']:.1f} m/s"
-    dst_range = f"{physics['dist_low_ft']}–{physics['dist_high_ft']} ft"
+    st.caption(
+        f"⚠ Distance is a rough estimate based on build ({build_txt}) × throw quality ({quality_txt}). "
+        f"Expect ±15–25%. Use as a relative indicator, not a precise measurement. "
+        f"Release visibility: {conf_pct}%.  {release_data.get('notes','')}"
+    )
 
     st.markdown(
         f'''<div class="phys-strip">
           <div class="phys-card vel">
             <div class="phys-label">Est. Velocity</div>
             <div class="phys-val">{physics['velocity']}</div>
-            <div class="phys-unit">{vel_range}</div>
+            <div class="phys-unit">{physics['vel_low']}–{physics['vel_high']} m/s range</div>
           </div>
           <div class="phys-card ang">
             <div class="phys-label">Release Angle</div>
-            <div class="phys-val">{physics['angle']}°</div>
-            <div class="phys-unit">{ang_range}</div>
+            <div class="phys-val" style="color:{a_label_color};font-size:1.6rem;">{a_label}</div>
+            <div class="phys-unit">qualitative — not a precise number</div>
           </div>
           <div class="phys-card dst">
-            <div class="phys-label">Predicted Distance</div>
+            <div class="phys-label">Predicted Distance ⚠</div>
             <div class="phys-val">{physics['dist_ft']}</div>
-            <div class="phys-unit">Range: {dst_range}</div>
+            <div class="phys-unit">rough range: {dst_range}</div>
           </div>
           <div class="phys-card grd">
             <div class="phys-label">Technique Grade</div>
