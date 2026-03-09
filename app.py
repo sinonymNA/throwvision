@@ -485,7 +485,7 @@ if all_frames and "analysis" not in st.session_state:
     if n_assigned > 0:
         st.progress(n_assigned / len(POSITIONS), text=f"{n_assigned}/6 positions assigned")
     if all_assigned:
-        st.success("All 6 positions assigned. Hit **⚡ ANALYZE** to run the breakdown.", icon="✓")
+        st.success("All 6 positions assigned. Hit **⚡ ANALYZE** to run the breakdown.")
 
 
 # ════════════════════════════════════════════
